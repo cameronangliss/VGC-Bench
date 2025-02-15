@@ -104,16 +104,16 @@ class MaskedActorCriticPolicy(ActorCriticPolicy):
 
     def get_mask(self, obs: torch.Tensor, ally_actions: torch.Tensor | None = None) -> torch.Tensor:
         if isinstance(self.action_space, Discrete):
-            mask = obs[:, -1, 0, : self.action_space.n]  # type: ignore
+            mask = obs[:, 0, : self.action_space.n]  # type: ignore
             mask = torch.where(mask.sum(dim=1, keepdim=True) == mask.size(1), 0.0, mask)
             mask = torch.where(mask == 1, float("-inf"), mask)
             return mask
         else:
             act_len = self.action_space.nvec[0]  # type: ignore
             if ally_actions is None:
-                mask = obs[:, -1, 0, : 2 * act_len]
+                mask = obs[:, 0, 0, : 2 * act_len]
             else:
-                mask = obs[:, -1, 0, act_len : 2 * act_len]
+                mask = obs[:, 0, 0, act_len : 2 * act_len]
                 ally_switched = (1 <= ally_actions) & (ally_actions <= 6)
                 ally_terastallized = ally_actions >= 87
                 # creating a (batch_size, act_len) size array of 0..act_len - 1 ranges
@@ -125,7 +125,7 @@ class MaskedActorCriticPolicy(ActorCriticPolicy):
                     | ((indices == ally_actions) & ally_switched)
                 )
                 mask = torch.where(ally_mask, 1.0, mask)
-                mask = torch.cat([obs[:, -1, 0, :act_len], mask], dim=1)
+                mask = torch.cat([obs[:, 0, 0, :act_len], mask], dim=1)
             mask = torch.where(mask == 1, float("-inf"), mask)
             return mask
 

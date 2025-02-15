@@ -86,16 +86,6 @@ class Callback(BaseCallback):
     #             json.dump(self.win_rates, f)
     #         self.model.logger.record("train/eval", win_rate)
 
-    def _on_rollout_start(self):
-        if self.self_play:
-            assert self.model.env is not None
-            policies = random.choices(
-                self.policy_pool + [MaskedActorCriticPolicy.clone(self.model)],
-                k=self.model.env.num_envs,
-            )
-            for i in range(self.model.env.num_envs):
-                self.model.env.env_method("set_opp_policy", policies[i], indices=i)
-
     def _on_rollout_end(self):
         if self.model.num_timesteps % self.save_interval == 0:
             win_rate = self.evaluate()

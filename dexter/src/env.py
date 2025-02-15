@@ -4,22 +4,15 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-import torch
+import supersuit as ss
+from gymnasium import Env
 from gymnasium.spaces import Box
-from gymnasium.wrappers import FrameStackObservation
-from poke_env import AccountConfiguration, ServerConfiguration
+from poke_env import ServerConfiguration
 from poke_env.environment import AbstractBattle
-from poke_env.player import (
-    DoublesEnv,
-    MaxBasePowerPlayer,
-    RandomPlayer,
-    SimpleHeuristicsPlayer,
-    SingleAgentWrapper,
-)
+from poke_env.player import DoublesEnv, MaxBasePowerPlayer, SingleAgentWrapper
 from src.agent import Agent
 from src.teams import RandomTeamBuilder
 from src.utils import doubles_chunk_obs_len, moves
-from stable_baselines3.common.monitor import Monitor
 
 
 class ShowdownEnv(DoublesEnv[npt.NDArray[np.float32]]):
@@ -38,17 +31,14 @@ class ShowdownEnv(DoublesEnv[npt.NDArray[np.float32]]):
     @classmethod
     def create_env(
         cls,
-        i: int,
+        num_envs: int,
         battle_format: str,
         num_frames: int,
         port: int,
         teams: list[int],
         self_play: bool,
-        device: str,
-    ) -> Monitor:
+    ) -> Env:
         env = cls(
-            account_configuration1=AccountConfiguration(f"Agent{port}-{i + 1}", None),
-            account_configuration2=AccountConfiguration(f"Opponent{port}-{i + 1}", None),
             server_configuration=ServerConfiguration(
                 f"ws://localhost:{port}/showdown/websocket",
                 "https://play.pokemonshowdown.com/action.php?",
@@ -60,34 +50,13 @@ class ShowdownEnv(DoublesEnv[npt.NDArray[np.float32]]):
             team=RandomTeamBuilder(teams, battle_format),
             start_challenging=True,
         )
+        env = ss.frame_stack_v2(env, stack_size=num_frames, stack_dim=0)
         if self_play:
-            num_gpus = torch.cuda.device_count()
-            other_gpu_ids = [f"cuda:{i}" for i in range(num_gpus) if f"cuda:{i}" != device]
-            opponent = Agent(
-                None,
-                num_frames=num_frames,
-                device=torch.device(
-                    other_gpu_ids[i % len(other_gpu_ids)] if num_gpus > 0 else "cpu"
-                ),
-                account_configuration=AccountConfiguration(f"Internal{i + 1}", None),
-                server_configuration=ServerConfiguration(
-                    f"ws://localhost:{port}/showdown/websocket",
-                    "https://play.pokemonshowdown.com/action.php?",
-                ),
-                battle_format=battle_format,
-                log_level=40,
-                accept_open_team_sheet=True,
-                open_timeout=None,
-                team=RandomTeamBuilder(teams, battle_format),
-            )
-        elif "vgc" in battle_format:
-            opponent = MaxBasePowerPlayer(battle_format=battle_format, log_level=40)
+            env = ss.pettingzoo_env_to_vec_env_v1(env)
+            env = ss.concat_vec_envs_v1(env, num_envs, num_cpus=num_envs, base_class="stable_baselines3")
         else:
-            opp_classes = [RandomPlayer, MaxBasePowerPlayer, SimpleHeuristicsPlayer]
-            opponent = opp_classes[i % 3](battle_format=battle_format, log_level=40)
-        env = SingleAgentWrapper(env, opponent)
-        env = FrameStackObservation(env, num_frames, padding_type="zero")
-        env = Monitor(env)
+            opponent = MaxBasePowerPlayer(battle_format=battle_format, log_level=40)
+            env = SingleAgentWrapper(env, opponent)  # type: ignore
         return env
 
     def reset(

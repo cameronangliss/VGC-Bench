@@ -39,18 +39,11 @@ class Agent(Player):
     __teampreview_draft: list[str]
 
     def __init__(
-        self,
-        policy: ActorCriticPolicy | None,
-        num_frames: int,
-        device: torch.device | None = None,
-        *args: Any,
-        **kwargs: Any,
+        self, policy: ActorCriticPolicy | None, num_frames: int, *args: Any, **kwargs: Any
     ):
-        if device is None:
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         super().__init__(*args, **kwargs)
         if policy is not None:
-            self.__policy = policy.to(device)
+            self.__policy = policy
         elif self.format_is_doubles:
             self.__policy = MaskedActorCriticPolicy(
                 observation_space=Box(
@@ -59,7 +52,7 @@ class Agent(Player):
                 action_space=MultiDiscrete([doubles_act_len, doubles_act_len]),
                 lr_schedule=lambda _: 1e-5,
                 num_frames=num_frames,
-            ).to(device)
+            )
         else:
             self.__policy = MaskedActorCriticPolicy(
                 observation_space=Box(
@@ -68,7 +61,7 @@ class Agent(Player):
                 action_space=Discrete(singles_act_len),
                 lr_schedule=lambda _: 1e-5,
                 num_frames=num_frames,
-            ).to(device)
+            )
         self.frames = Deque(maxlen=num_frames)
         self.__teampreview_draft = []
 
