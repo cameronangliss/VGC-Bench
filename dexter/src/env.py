@@ -53,7 +53,9 @@ class ShowdownEnv(DoublesEnv[npt.NDArray[np.float32]]):
         env = ss.frame_stack_v2(env, stack_size=num_frames, stack_dim=0)
         if self_play:
             env = ss.pettingzoo_env_to_vec_env_v1(env)
-            env = ss.concat_vec_envs_v1(env, num_envs, num_cpus=num_envs, base_class="stable_baselines3")
+            env = ss.concat_vec_envs_v1(
+                env, num_envs, num_cpus=num_envs, base_class="stable_baselines3"
+            )
         else:
             opponent = MaxBasePowerPlayer(battle_format=battle_format, log_level=40)
             env = SingleAgentWrapper(env, opponent)  # type: ignore
