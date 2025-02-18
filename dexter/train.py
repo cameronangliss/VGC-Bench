@@ -49,7 +49,7 @@ def train():
     if behavior_clone:
         ppo.policy.actor_grad = num_saved_timesteps > 0  # type: ignore
     callback = Callback(steps, battle_format, num_frames, teams, port, self_play, behavior_clone)
-    ppo.learn(steps, callback=callback, tb_log_name=run_name, reset_num_timesteps=False)
+    ppo.learn(1000 * steps, callback=callback, tb_log_name=run_name, reset_num_timesteps=False)
     server.terminate()
     server.wait()
 

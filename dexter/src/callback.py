@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os
-import random
 import warnings
 
 from poke_env import AccountConfiguration, ServerConfiguration
@@ -78,18 +77,7 @@ class Callback(BaseCallback):
         )
 
     def _on_step(self) -> bool:
-        return True
-
-    def _on_training_start(self):
-        if self.behavior_clone and len(self.policy_pool) == 1 and len(self.win_rates) == 0:
-            win_rate = self.evaluate()
-            self.win_rates.append(win_rate)
-            with open(f"logs/{self.run_name}-win-rates.json", "w") as f:
-                json.dump(self.win_rates, f)
-            self.model.logger.record("train/eval", win_rate)
-
-    def _on_rollout_end(self):
-        if self.model.num_timesteps % self.save_interval == 0:
+        if self.model.num_timesteps > 0 and self.model.num_timesteps % self.save_interval == 0:
             win_rate = self.evaluate()
             self.win_rates.append(win_rate)
             with open(f"logs/{self.run_name}-win-rates.json", "w") as f:
@@ -99,6 +87,15 @@ class Callback(BaseCallback):
             if self.self_play:
                 policy = MaskedActorCriticPolicy.clone(self.model)
                 self.policy_pool.append(policy)
+        return True
+
+    def _on_training_start(self):
+        if self.behavior_clone and len(self.policy_pool) == 1 and len(self.win_rates) == 0:
+            win_rate = self.evaluate()
+            self.win_rates.append(win_rate)
+            with open(f"logs/{self.run_name}-win-rates.json", "w") as f:
+                json.dump(self.win_rates, f)
+            self.model.logger.record("train/eval", win_rate)
 
     def evaluate(self) -> float:
         policy = MaskedActorCriticPolicy.clone(self.model)
