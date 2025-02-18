@@ -386,6 +386,7 @@ class Agent(Player):
                 i + 1
                 for i, pokemon in enumerate(battle.team.values())
                 if battle.force_switch != [[False, True], [True, False]][pos]
+                and not battle.trapped[pos]
                 and not (
                     len(battle.available_switches[0]) == 1
                     and battle.force_switch == [True, True]
