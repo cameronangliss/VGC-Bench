@@ -10,11 +10,14 @@ from poke_env.environment import (
     DoubleBattle,
     Effect,
     Field,
+    Move,
+    MoveCategory,
     Pokemon,
     PokemonGender,
     PokemonType,
     SideCondition,
     Status,
+    Target,
     Weather,
 )
 from poke_env.player import BattleOrder, DoublesEnv, Player, SinglesEnv
@@ -25,6 +28,7 @@ from src.utils import (
     doubles_act_len,
     doubles_chunk_obs_len,
     items,
+    move_obs_len,
     moves,
     pokemon_obs_len,
     singles_act_len,
@@ -253,6 +257,10 @@ class Agent(Player):
             for move in pokemon.moves.values()
         ]
         move_ids += [0] * (4 - len(move_ids))
+        move_details = [Agent.embed_move(m) for m in pokemon.moves.values()]
+        move_details = np.concatenate(
+            [*move_details, np.zeros(move_obs_len * (4 - len(move_details)))]
+        )
         types = [float(t in pokemon.types) for t in PokemonType]
         tera_type = [float(t == pokemon.tera_type) for t in PokemonType]
         stats = [(s or 0) / 1000 for s in pokemon.stats.values()]
@@ -260,8 +268,6 @@ class Agent(Player):
         weight = pokemon.weight / 1000
         # volatile fields
         hp_frac = pokemon.current_hp_fraction
-        pp_fracs = [m.current_pp / m.max_pp for m in pokemon.moves.values()]
-        pp_fracs += [0] * (4 - len(pp_fracs))
         status = [float(s == pokemon.status) for s in Status]
         status_counter = pokemon.status_counter / 16
         boosts = [b / 6 for b in pokemon.boosts.values()]
@@ -277,13 +283,13 @@ class Agent(Player):
                 ability_id,
                 item_id,
                 *move_ids,
+                *move_details,
                 *types,
                 *tera_type,
                 *stats,
                 *gender,
                 weight,
                 hp_frac,
-                *pp_fracs,
                 *status,
                 status_counter,
                 *boosts,
@@ -299,6 +305,41 @@ class Agent(Player):
                 float(from_opponent),
             ],
             dtype=np.float32,
+        )
+
+    @staticmethod
+    def embed_move(move: Move) -> npt.NDArray[np.float32]:
+        power = move.base_power / 250
+        acc = move.accuracy / 100
+        category = [float(c == move.category) for c in MoveCategory]
+        target = [float(t == move.target) for t in Target]
+        priority = (move.priority + 7) / 12
+        crit_ratio = move.crit_ratio
+        drain = move.drain
+        force_switch = float(move.force_switch)
+        recoil = move.recoil
+        self_destruct = float(move.self_destruct is not None)
+        self_switch = float(move.self_switch is not False)
+        pp = move.max_pp / 64
+        pp_frac = move.current_pp / move.max_pp
+        move_type = [float(t == move.type) for t in PokemonType]
+        return np.array(
+            [
+                power,
+                acc,
+                *category,
+                *target,
+                priority,
+                crit_ratio,
+                drain,
+                force_switch,
+                recoil,
+                self_destruct,
+                self_switch,
+                pp,
+                pp_frac,
+                *move_type,
+            ]
         )
 
     @staticmethod

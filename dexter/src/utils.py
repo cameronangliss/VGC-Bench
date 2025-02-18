@@ -5,15 +5,18 @@ import numpy.typing as npt
 from poke_env.environment import (
     Effect,
     Field,
+    MoveCategory,
     PokemonGender,
     PokemonType,
     SideCondition,
     Status,
+    Target,
     Weather,
 )
 
 # training params
 battle_format = "gen9vgc2024regh"
+behavior_clone = False
 device = "cuda:3"
 num_envs = 32
 num_frames = 3
@@ -31,7 +34,10 @@ doubles_act_len = 107
 singles_glob_obs_len = singles_act_len + len(Field) + len(Weather) + 7
 doubles_glob_obs_len = 2 * doubles_act_len + len(Field) + len(Weather) + 8
 side_obs_len = len(SideCondition) + 5
-pokemon_obs_len = len(Effect) + len(PokemonGender) + 2 * len(PokemonType) + len(Status) + 41
+move_obs_len = len(MoveCategory) + len(Target) + len(PokemonType) + 11
+pokemon_obs_len = (
+    4 * move_obs_len + len(Effect) + len(PokemonGender) + 2 * len(PokemonType) + len(Status) + 37
+)
 singles_chunk_obs_len = singles_glob_obs_len + side_obs_len + pokemon_obs_len
 doubles_chunk_obs_len = doubles_glob_obs_len + side_obs_len + pokemon_obs_len
 

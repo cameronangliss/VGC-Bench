@@ -13,6 +13,7 @@ from poke_env.player import DoublesEnv, MaxBasePowerPlayer, SingleAgentWrapper
 from src.agent import Agent
 from src.teams import RandomTeamBuilder
 from src.utils import doubles_chunk_obs_len, moves
+from stable_baselines3.common.monitor import Monitor
 
 
 class ShowdownEnv(DoublesEnv[npt.NDArray[np.float32]]):
@@ -59,6 +60,7 @@ class ShowdownEnv(DoublesEnv[npt.NDArray[np.float32]]):
         else:
             opponent = MaxBasePowerPlayer(battle_format=battle_format, log_level=40)
             env = SingleAgentWrapper(env, opponent)  # type: ignore
+        env = Monitor(env)
         return env
 
     def reset(

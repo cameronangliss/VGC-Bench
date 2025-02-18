@@ -7,6 +7,7 @@ from src.env import ShowdownEnv
 from src.policy import MaskedActorCriticPolicy
 from src.utils import (
     battle_format,
+    behavior_clone,
     device,
     num_envs,
     num_frames,
@@ -40,12 +41,14 @@ def train():
         policy_kwargs={"num_frames": num_frames},
         device=device,
     )
+    num_saved_timesteps = 0
     if os.path.exists(f"saves/{run_name}") and len(os.listdir(f"saves/{run_name}")) > 0:
         num_saved_timesteps = max([int(file[:-4]) for file in os.listdir(f"saves/{run_name}")])
         ppo.num_timesteps = num_saved_timesteps
         ppo.set_parameters(f"saves/{run_name}/{num_saved_timesteps}.zip", device=ppo.device)
-    # ppo.policy.actor_grad = num_saved_timesteps > 0  # type: ignore
-    callback = Callback(steps, battle_format, num_frames, teams, port, self_play)
+    if behavior_clone:
+        ppo.policy.actor_grad = num_saved_timesteps > 0  # type: ignore
+    callback = Callback(steps, battle_format, num_frames, teams, port, self_play, behavior_clone)
     ppo.learn(steps, callback=callback, tb_log_name=run_name, reset_num_timesteps=False)
     server.terminate()
     server.wait()

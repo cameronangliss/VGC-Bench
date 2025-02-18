@@ -7,13 +7,13 @@ import numpy.typing as npt
 from imitation.data.types import Trajectory
 from poke_env import to_id_str
 from poke_env.environment import AbstractBattle, DoubleBattle
-from poke_env.player import BattleOrder, DoubleBattleOrder, Player
+from poke_env.player import BattleOrder, DoubleBattleOrder, DoublesEnv, Player
 from src.agent import Agent
 
 
 class LogReader(Player):
     states: list[npt.NDArray[np.float32]]
-    actions: list[npt.NDArray[np.int32]]
+    actions: list[npt.NDArray[np.int64]]
     next_msg: str | None
     teampreview_draft: list[str]
 
@@ -31,7 +31,7 @@ class LogReader(Player):
         order2 = self.get_order(battle, self.next_msg, True)
         order = DoubleBattleOrder(order1, order2)
         state = Agent.embed_battle(battle, self.teampreview_draft)
-        action = Agent.doubles_order_to_action(order, battle)
+        action = DoublesEnv.order_to_action(order, battle)
         self.states += [state]
         self.actions += [action]
         return order
@@ -100,7 +100,7 @@ class LogReader(Player):
         order2 = BattleOrder(list(battle.team.values())[id2 - 1])
         order = DoubleBattleOrder(order1, order2)
         state = Agent.embed_battle(battle, self.teampreview_draft)
-        action = Agent.doubles_order_to_action(order, battle)
+        action = DoublesEnv.order_to_action(order, battle)
         self.states += [state]
         self.actions += [action]
         self.teampreview_draft = [
@@ -124,7 +124,7 @@ class LogReader(Player):
 
     async def follow_log(
         self, tag: str, log: str, role: str
-    ) -> tuple[npt.NDArray[np.float32], npt.NDArray[np.int32]] | None:
+    ) -> tuple[npt.NDArray[np.float32], npt.NDArray[np.int64]] | None:
         self.states = []
         self.actions = []
         self.teampreview_draft = []
