@@ -18,7 +18,7 @@ device = "cuda:3"
 num_envs = 32
 num_frames = 3
 num_teams = 16
-port = 8000
+port = 7200
 self_play = True
 steps = 98_304
 
