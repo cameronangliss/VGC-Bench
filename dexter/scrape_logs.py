@@ -47,7 +47,7 @@ def get_battle_idents(num_battles: int, before: int, newest: int | None) -> list
 
 def update_battle_idents(battle_idents: set[str], before: int) -> tuple[set[str], int]:
     site = "https://replay.pokemonshowdown.com"
-    format_str = "gen9vgc2024regh"
+    format_str = "gen9vgc2025regg"
     response = requests.get(f"{site}/search.json?format={format_str}&before={before}")
     new_battle_jsons = json.loads(response.text)
     before = new_battle_jsons[-1]["uploadtime"] + 1
