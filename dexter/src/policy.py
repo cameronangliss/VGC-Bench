@@ -158,8 +158,7 @@ class AttentionExtractor(BaseFeaturesExtractor):
         self.frame_encoding: torch.Tensor
         self.register_buffer("frame_encoding", torch.eye(num_frames).unsqueeze(0))
         self.frame_proj = nn.Linear(self.proj_len + num_frames, self.proj_len)
-        self.mask: torch.Tensor
-        self.register_buffer("mask", nn.Transformer.generate_square_subsequent_mask(num_frames))
+        self.mask = nn.Transformer.generate_square_subsequent_mask(num_frames).transpose(0, 1)
         self.meta_encoder = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
                 d_model=self.proj_len,
@@ -198,8 +197,7 @@ class AttentionExtractor(BaseFeaturesExtractor):
         x = self.frame_encoder.forward(x)[:, 0, :]
         x = x.view(batch_size, num_frames, -1)
         # meta encoder
-        frame_encoding = self.frame_encoding[:, -num_frames:, :].expand(batch_size, -1, -1)
+        frame_encoding = self.frame_encoding.expand(batch_size, -1, -1)
         x = torch.cat([x, frame_encoding], dim=2)
         x = self.frame_proj.forward(x)
-        mask = self.mask[-num_frames:, -num_frames:]
-        return self.meta_encoder.forward(x, mask=mask, is_causal=True)[:, -1, :]
+        return self.meta_encoder.forward(x, mask=self.mask, is_causal=True)[:, 0, :]
