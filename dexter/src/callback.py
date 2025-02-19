@@ -77,16 +77,6 @@ class Callback(BaseCallback):
         )
 
     def _on_step(self) -> bool:
-        if self.model.num_timesteps > 0 and self.model.num_timesteps % self.save_interval == 0:
-            win_rate = self.evaluate()
-            self.win_rates.append(win_rate)
-            with open(f"logs/{self.run_name}-win-rates.json", "w") as f:
-                json.dump(self.win_rates, f)
-            self.model.save(f"saves/{self.run_name}/{self.model.num_timesteps}")
-            self.model.logger.record("train/eval", win_rate)
-            if self.self_play:
-                policy = MaskedActorCriticPolicy.clone(self.model)
-                self.policy_pool.append(policy)
         return True
 
     def _on_training_start(self):
@@ -96,6 +86,18 @@ class Callback(BaseCallback):
             with open(f"logs/{self.run_name}-win-rates.json", "w") as f:
                 json.dump(self.win_rates, f)
             self.model.logger.record("train/eval", win_rate)
+
+    def _on_rollout_end(self):
+        if self.model.num_timesteps % self.save_interval == 0:
+            win_rate = self.evaluate()
+            self.win_rates.append(win_rate)
+            with open(f"logs/{self.run_name}-win-rates.json", "w") as f:
+                json.dump(self.win_rates, f)
+            self.model.save(f"saves/{self.run_name}/{self.model.num_timesteps}")
+            self.model.logger.record("train/eval", win_rate)
+            if self.self_play:
+                policy = MaskedActorCriticPolicy.clone(self.model)
+                self.policy_pool.append(policy)
 
     def evaluate(self) -> float:
         policy = MaskedActorCriticPolicy.clone(self.model)

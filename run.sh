@@ -4,4 +4,4 @@ if [[ $PATH != "/scratch/cluster/cangliss/repos/UT-masters-thesis/bin:"* ]]; the
 fi
 
 python dexter/pretrain.py
-python dexter/train.py > debug.log 2>&1
+while true; do python dexter/train.py > debug.log 2>&1; sleep 10; done
