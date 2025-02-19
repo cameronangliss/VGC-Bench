@@ -7,7 +7,7 @@ import numpy as np
 from poke_env import AccountConfiguration, ShowdownServerConfiguration
 from src.agent import Agent
 from src.teams import RandomTeamBuilder
-from src.utils import run_name, teams
+from src.utils import battle_format, run_name, teams
 from stable_baselines3 import PPO
 
 
@@ -26,13 +26,13 @@ async def play(n_games: int, play_on_ladder: bool):
         policy,
         num_frames=3,
         account_configuration=AccountConfiguration("", ""),  # fill in
-        battle_format="gen9vgc2024regh",
+        battle_format=battle_format,
         log_level=40,
         max_concurrent_battles=10,
         server_configuration=ShowdownServerConfiguration,
         accept_open_team_sheet=True,
         start_timer_on_battle_start=play_on_ladder,
-        team=RandomTeamBuilder(teams, "gen9vgc2024regh"),
+        team=RandomTeamBuilder(teams, battle_format),
     )
     if play_on_ladder:
         print("Entering ladder")

@@ -9,6 +9,7 @@ from poke_env import to_id_str
 from poke_env.environment import AbstractBattle, DoubleBattle
 from poke_env.player import BattleOrder, DoubleBattleOrder, DoublesEnv, Player
 from src.agent import Agent
+from src.utils import battle_format
 
 
 class LogReader(Player):
@@ -31,7 +32,7 @@ class LogReader(Player):
         order2 = self.get_order(battle, self.next_msg, True)
         order = DoubleBattleOrder(order1, order2)
         state = Agent.embed_battle(battle, self.teampreview_draft)
-        action = DoublesEnv.order_to_action(order, battle)
+        action = DoublesEnv.order_to_action(order, battle, fake=True)
         self.states += [state]
         self.actions += [action]
         return order
@@ -100,7 +101,7 @@ class LogReader(Player):
         order2 = BattleOrder(list(battle.team.values())[id2 - 1])
         order = DoubleBattleOrder(order1, order2)
         state = Agent.embed_battle(battle, self.teampreview_draft)
-        action = DoublesEnv.order_to_action(order, battle)
+        action = DoublesEnv.order_to_action(order, battle, fake=True)
         self.states += [state]
         self.actions += [action]
         self.teampreview_draft = [
@@ -158,12 +159,8 @@ def process_logs(log_jsons: dict[str, tuple[str, str]]) -> list[Trajectory]:
     total = 0
     for i, (tag, (_, log)) in enumerate(log_jsons.items()):
         print(f"progress: {round(100 * i / len(log_jsons), ndigits=2)}%", end="\r")
-        player1 = LogReader(
-            battle_format="gen9vgc2024regh", log_level=51, accept_open_team_sheet=True
-        )
-        player2 = LogReader(
-            battle_format="gen9vgc2024regh", log_level=51, accept_open_team_sheet=True
-        )
+        player1 = LogReader(battle_format=battle_format, log_level=51, accept_open_team_sheet=True)
+        player2 = LogReader(battle_format=battle_format, log_level=51, accept_open_team_sheet=True)
         result1 = asyncio.run(player1.follow_log(tag, log, "p1"))
         result2 = asyncio.run(player2.follow_log(tag, log, "p2"))
         if result1 is not None:
