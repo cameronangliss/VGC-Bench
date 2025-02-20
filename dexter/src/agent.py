@@ -95,10 +95,6 @@ class Agent(Player):
             for _ in range(self.frames.maxlen):
                 self.frames.appendleft(np.zeros([12, doubles_chunk_obs_len], dtype=np.float32))
             order1 = self.choose_move(battle)
-            if not isinstance(order1, DoubleBattleOrder):
-                return order1.message
-            elif order1.first_order is None or order1.second_order is None:
-                return self.random_teampreview(battle)
             upd_battle = _EnvPlayer._simulate_teampreview_switchin(order1, battle)
             order2 = self.choose_move(upd_battle)
             action1 = DoublesEnv.order_to_action(order1, battle)
@@ -382,8 +378,6 @@ class Agent(Player):
                 )
         elif isinstance(battle, DoubleBattle):
             assert pos is not None
-            if battle.finished or battle._wait:
-                return np.array([0])
             switch_space = [
                 i + 1
                 for i, pokemon in enumerate(battle.team.values())
@@ -400,7 +394,11 @@ class Agent(Player):
             active_mon = battle.active_pokemon[pos]
             if battle.teampreview:
                 return np.array(switch_space)
-            elif active_mon is None:
+            elif battle.finished:
+                return np.array([])
+            elif battle._wait:
+                return np.array([0])
+            elif active_mon is None or battle.force_switch[pos]:
                 return np.array(switch_space or [0])
             else:
                 move_spaces = [
