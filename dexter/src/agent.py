@@ -20,7 +20,7 @@ from poke_env.environment import (
     Target,
     Weather,
 )
-from poke_env.player import BattleOrder, DoubleBattleOrder, DoublesEnv, Player, SinglesEnv
+from poke_env.player import BattleOrder, DoublesEnv, Player, SinglesEnv
 from poke_env.player.env import _EnvPlayer
 from src.policy import MaskedActorCriticPolicy
 from src.utils import (
