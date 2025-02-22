@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import random
 import warnings
 
 from poke_env import AccountConfiguration, ServerConfiguration
@@ -86,6 +87,10 @@ class Callback(BaseCallback):
             with open(f"logs/{self.run_name}-win-rates.json", "w") as f:
                 json.dump(self.win_rates, f)
             self.model.logger.record("train/eval", win_rate)
+
+    def _on_rollout_start(self):
+        possible_opps = self.policy_pool + [MaskedActorCriticPolicy.clone(self.model)]
+        self.model.opp_policy = random.choice(possible_opps).to(self.model.device)  # type: ignore
 
     def _on_rollout_end(self):
         if self.model.num_timesteps % self.save_interval == 0:

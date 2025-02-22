@@ -5,6 +5,7 @@ from subprocess import PIPE, STDOUT, Popen
 from src.callback import Callback
 from src.env import ShowdownEnv
 from src.policy import MaskedActorCriticPolicy
+from src.ppo import MAPPO
 from src.utils import (
     battle_format,
     behavior_clone,
@@ -17,7 +18,6 @@ from src.utils import (
     steps,
     teams,
 )
-from stable_baselines3 import PPO
 
 
 def train():
@@ -29,7 +29,7 @@ def train():
     )
     time.sleep(10)
     env = ShowdownEnv.create_env(num_envs, battle_format, num_frames, port, teams, self_play)
-    ppo = PPO(
+    ppo = MAPPO(
         MaskedActorCriticPolicy,
         env,
         learning_rate=1e-5,
