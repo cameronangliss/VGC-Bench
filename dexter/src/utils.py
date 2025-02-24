@@ -16,7 +16,7 @@ from poke_env.environment import (
 
 # training params
 battle_format = "gen9vgc2025regg"
-behavior_clone = False
+behavior_clone = True
 device = "cuda:3"
 num_envs = 32
 num_frames = 3

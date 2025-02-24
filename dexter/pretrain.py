@@ -6,7 +6,6 @@ import supersuit as ss
 from imitation.algorithms.bc import BC
 from imitation.data.types import Trajectory
 from imitation.util.logger import configure
-from poke_env.player import RandomPlayer, SingleAgentWrapper
 from src.env import ShowdownEnv
 from src.policy import MaskedActorCriticPolicy
 from src.utils import (
@@ -56,13 +55,7 @@ def pretrain():
 def frame_stack_traj(traj: Trajectory) -> Trajectory:
     zero_obs = np.zeros([12, doubles_chunk_obs_len])
     obs_list = [
-        np.stack(
-            [
-                zero_obs if i + j + 1 - num_frames < 0 else traj.obs[i + j + 1 - num_frames]
-                for j in range(num_frames)
-            ],
-            axis=0,
-        )
+        np.stack([traj.obs[i - j] if i - j >= 0 else zero_obs for j in range(num_frames)], axis=0)
         for i in range(len(traj.obs))
     ]
     return Trajectory(obs=np.stack(obs_list, axis=0), acts=traj.acts, infos=None, terminal=True)
