@@ -4,6 +4,7 @@ import os
 import random
 import warnings
 
+from poke_env.concurrency import POKE_LOOP
 from poke_env import AccountConfiguration, ServerConfiguration
 from poke_env.player import MaxBasePowerPlayer, SimpleHeuristicsPlayer
 from src.agent import Agent
@@ -110,5 +111,15 @@ class Callback(BaseCallback):
         asyncio.run(self.eval_agent.battle_against(self.eval_opponent, n_battles=100))
         win_rate = self.eval_agent.win_rate
         self.eval_agent.reset_battles()
+        dead_tags = [k for k, b in self.eval_agent.battles.items() if b.finished]
+        for tag in dead_tags:
+            self.eval_agent._battles.pop(tag)
+            asyncio.run_coroutine_threadsafe(
+                self.eval_agent.ps_client.send_message(f"/leave {tag}"), POKE_LOOP
+            )
+            self.eval_opponent._battles.pop(tag)
+            asyncio.run_coroutine_threadsafe(
+                self.eval_opponent.ps_client.send_message(f"/leave {tag}"), POKE_LOOP
+            )
         self.eval_opponent.reset_battles()
         return win_rate

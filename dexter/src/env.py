@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import numpy as np
@@ -66,11 +67,16 @@ class ShowdownEnv(DoublesEnv[npt.NDArray[np.float32]]):
         self, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[dict[str, npt.NDArray[np.float32]], dict[str, dict[str, Any]]]:
         result = super().reset(seed=seed, options=options)
-        tags = [k for k in self.agent1.battles.keys()]
-        for tag in tags:
-            if self.battle1 is None or tag != self.battle1.battle_tag:
-                self.agent1._battles.pop(tag)
-                self.agent2._battles.pop(tag)
+        dead_tags = [k for k, b in self.agent1.battles.items() if b.finished]
+        for tag in dead_tags:
+            self.agent1._battles.pop(tag)
+            asyncio.run_coroutine_threadsafe(
+                self.agent1.ps_client.send_message(f"/leave {tag}"), self.loop
+            )
+            self.agent2._battles.pop(tag)
+            asyncio.run_coroutine_threadsafe(
+                self.agent2.ps_client.send_message(f"/leave {tag}"), self.loop
+            )
         return result
 
     def calc_reward(self, battle: AbstractBattle) -> float:
