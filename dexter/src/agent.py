@@ -394,9 +394,7 @@ class Agent(Player):
             active_mon = battle.active_pokemon[pos]
             if battle.teampreview:
                 return np.array(switch_space)
-            elif battle.finished:
-                return np.array([])
-            elif battle._wait:
+            elif battle.finished or battle._wait:
                 return np.array([0])
             elif active_mon is None or battle.force_switch[pos]:
                 return np.array(switch_space or [0])

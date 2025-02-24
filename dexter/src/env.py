@@ -49,6 +49,7 @@ class ShowdownEnv(DoublesEnv[npt.NDArray[np.float32]]):
             open_timeout=None,
             team=RandomTeamBuilder(teams, battle_format),
             start_challenging=True,
+            strict=False,
         )
         env = ss.frame_stack_v2(env, stack_size=num_frames, stack_dim=0)
         if self_play:
