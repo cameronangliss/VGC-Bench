@@ -1,4 +1,3 @@
-import json
 import re
 from typing import Any
 
@@ -6,8 +5,9 @@ import numpy as np
 import torch
 import transformers
 from poke_env.environment import AbstractBattle, DoubleBattle, Move, Pokemon
-from poke_env.player import BattleOrder, DefaultBattleOrder, DoublesEnv, Player
+from poke_env.player import BattleOrder, DoublesEnv, Player
 from src.agent import Agent
+from src.utils import doubles_act_len
 
 
 class LLMPlayer(Player):
@@ -25,27 +25,100 @@ class LLMPlayer(Player):
         )
         tokenizer.pad_token = tokenizer.eos_token
         model.config.pad_token_id = tokenizer.eos_token_id
-        self.model = transformers.pipeline("text-generation", model=model, tokenizer=tokenizer)
+        self.model = transformers.pipeline("text-generation", model=model, tokenizer=tokenizer)  # type: ignore
 
     def choose_move(self, battle: AbstractBattle) -> BattleOrder:
         assert isinstance(battle, DoubleBattle)
-        prompt = self.explain_battle(battle, self.__teampreview_draft)
-        try:
-            input_dict = [
-                {
-                    "role": "system",
-                    "content": f"You are an expert Pokemon VGC competitor playing a Pokemon battle in the {battle.format} format.",
-                },
-                {"role": "user", "content": prompt},
-            ]
-            response: str = self.model(input_dict)[0]["generated_text"][-1]["content"]  # type: ignore
-            action = np.array(json.loads(response))
-        except ValueError:
-            action = np.array([-2, -2])
-        order = DoublesEnv.action_to_order(action, battle, strict=False)
-        if isinstance(order, DefaultBattleOrder):
-            return self.choose_random_move(battle)
+        action1 = self.choose_move_individual(battle, 0, None)
+        prev_action = action1 if action1 >= 0 else None
+        action2 = self.choose_move_individual(battle, 1, prev_action)
+        action = np.array([action1, action2])
+        order = DoublesEnv.action_to_order(action, battle)
         return order
+
+    def choose_move_individual(
+        self, battle: DoubleBattle, pos: int, prev_action: int | None
+    ) -> int:
+        action_space = Agent.get_action_space(battle, pos)
+        mask = torch.tensor(
+            [float("-inf") if i not in action_space else 0 for i in range(doubles_act_len)]
+        )
+        last_order = None
+        if pos == 1:
+            assert prev_action is not None
+            mask += LLMPlayer._get_mask(torch.tensor([[prev_action]]))[0]
+            last_order = DoublesEnv._action_to_order_individual(
+                np.int64(prev_action), battle, False, 0
+            )
+        action_space = [i for i, m in enumerate(mask.tolist()) if m == 0]
+        if not action_space:
+            return 0
+        elif len(action_space) == 1:
+            return action_space[0]
+        order_space = [
+            DoublesEnv._action_to_order_individual(np.int64(a), battle, False, pos)
+            for a in action_space
+        ]
+        action_names = [
+            self.readable_battle_order(battle, o, pos) for o in order_space if o is not None
+        ]
+        prompt = self.explain_battle(
+            battle, self.__teampreview_draft, action_names, last_order, pos
+        )
+        input_dict = [
+            {
+                "role": "system",
+                "content": f"You are an expert Pokemon VGC competitor playing a Pokemon battle in the {battle.format} format.",
+            },
+            {"role": "user", "content": prompt},
+        ]
+        response: str = self.model(input_dict)[0]["generated_text"][-1]["content"]  # type: ignore
+        try:
+            action_index = int(response) - 1
+            action = action_space[action_index]
+        except ValueError:
+            print(f"FAULTY RESPONSE: {response}", flush=True)
+            action = -2
+        return action
+
+    @staticmethod
+    def readable_battle_order(battle: DoubleBattle, order: BattleOrder, pos: int) -> str:
+        order_str = str(order).removeprefix("/choose ")
+        if order_str.endswith(" 1"):
+            target = (
+                battle.active_pokemon[0].base_species
+                if battle.active_pokemon[0] is not None
+                else "empty slot"
+            )
+            order_str = f"{order_str[:-2]} targeting {target} (foe's pokemon)"
+        elif order_str.endswith(" 2"):
+            target = (
+                battle.active_pokemon[1].base_species
+                if battle.active_pokemon[1] is not None
+                else "empty slot"
+            )
+            order_str = f"{order_str[:-2]} targeting {target} (foe's pokemon)"
+        elif order_str.endswith(" -1"):
+            target = (
+                battle.opponent_active_pokemon[0].base_species
+                if battle.opponent_active_pokemon[0] is not None
+                else "empty slot"
+            )
+            order_str = f"{order_str[:-3]} targeting {target} (your pokemon)"
+        elif order_str.endswith(" -2"):
+            target = (
+                battle.opponent_active_pokemon[1].base_species
+                if battle.opponent_active_pokemon[1] is not None
+                else "empty slot"
+            )
+            order_str = f"{order_str[:-3]} targeting {target} (your pokemon)"
+        if "terastallize" in order_str:
+            active_mon = battle.active_pokemon[pos]
+            assert active_mon is not None
+            order_str = order_str.replace(
+                "terastallize", f"activating {active_mon.tera_type} tera type"
+            )
+        return order_str
 
     def teampreview(self, battle: AbstractBattle) -> str:
         assert isinstance(battle, DoubleBattle)
@@ -99,7 +172,13 @@ Do **not** include any extra text, punctuation, or explanation.
         return response
 
     @staticmethod
-    def explain_battle(battle: DoubleBattle, teampreview_draft: list[int]) -> str:
+    def explain_battle(
+        battle: DoubleBattle,
+        teampreview_draft: list[int],
+        action_names: list[str],
+        last_order: BattleOrder | None,
+        pos: int,
+    ) -> str:
         glob = LLMPlayer.explain_global(battle)
         side = LLMPlayer.explain_side(battle)
         opp_side = LLMPlayer.explain_side(battle, opp=True)
@@ -111,8 +190,7 @@ Do **not** include any extra text, punctuation, or explanation.
             if i + 1 in teampreview_draft and p not in [a1, a2]
         ]
         opp_benched_pokemon = [p for p in battle.opponent_team.values() if p not in [o1, o2]]
-        action_space1 = Agent.get_action_space(battle, 0)
-        action_space2 = Agent.get_action_space(battle, 1)
+        listed_action_space = "\n".join(f"{i + 1}. {name}" for i, name in enumerate(action_names))
         return f"""
 The following is what you are currently observing:
 
@@ -121,23 +199,23 @@ Global Conditions in Battle:
 Side Conditions:
 {side}
 Active Pokemon:
-    1. {a1.base_species if a1 is not None else ""}
+    1. {a1.base_species if a1 is not None else "empty"}
 {LLMPlayer.explain_pokemon(a1) if a1 is not None else ""}
-    2. {a2.base_species if a2 is not None else ""}
+    2. {a2.base_species if a2 is not None else "empty"}
 {LLMPlayer.explain_pokemon(a2) if a2 is not None else ""}
 Benched Pokemon:
     1. {benched_pokemon[0].base_species}
 {LLMPlayer.explain_pokemon(benched_pokemon[0])}
     2. {benched_pokemon[1].base_species}
 {LLMPlayer.explain_pokemon(benched_pokemon[1])}
-    3. {benched_pokemon[2].base_species if len(benched_pokemon) > 2 else ""}
+    3. {benched_pokemon[2].base_species if len(benched_pokemon) > 2 else "empty"}
 {LLMPlayer.explain_pokemon(benched_pokemon[2]) if len(benched_pokemon) > 2 else ""}
 Opponent Side Conditions:
 {opp_side}
 Opponent Active Pokemon:
-    1. {o1.base_species if o1 is not None else ""}
+    1. {o1.base_species if o1 is not None else "empty"}
 {LLMPlayer.explain_pokemon(o1) if o1 is not None else ""}
-    2. {o2.base_species if o2 is not None else ""}
+    2. {o2.base_species if o2 is not None else "empty"}
 {LLMPlayer.explain_pokemon(o2) if o2 is not None else ""}
 Opponent Benched Pokemon:
     1. {opp_benched_pokemon[0].base_species}
@@ -148,61 +226,17 @@ Opponent Benched Pokemon:
 {LLMPlayer.explain_pokemon(opp_benched_pokemon[2])}
     4. {opp_benched_pokemon[3].base_species}
 {LLMPlayer.explain_pokemon(opp_benched_pokemon[3])}
-    5. {opp_benched_pokemon[4].base_species if len(opp_benched_pokemon) > 4 else ""}
+    5. {opp_benched_pokemon[4].base_species if len(opp_benched_pokemon) > 4 else "empty"}
 {LLMPlayer.explain_pokemon(opp_benched_pokemon[4]) if len(opp_benched_pokemon) > 4 else ""}
 
-Please select the optimal move given this observation. Your response must be of the form [<action1>, <action2>], where action1 and action2 are integers with the following meanings:
+Please select the optimal action given this observation for your {['first', 'second'][pos]} active pokemon: {battle.active_pokemon[pos]}.
 
-action = -2: default
-action = -1: forfeit
-action = 0: pass
-1 <= action <= 6: switch to pokemon <action
-7 <= action <= 11: move 1
-12 <= action <= 16: move 2
-17 <= action <= 21: move 3
-22 <= action <= 26: move 4
-27 <= action <= 31: move 1 and mega evolve
-32 <= action <= 36: move 2 and mega evolve
-37 <= action <= 41: move 3 and mega evolve
-42 <= action <= 46: move 4 and mega evolve
-47 <= action <= 51: move 1 and z-move
-52 <= action <= 56: move 2 and z-move
-57 <= action <= 61: move 3 and z-move
-62 <= action <= 66: move 4 and z-move
-67 <= action <= 71: move 1 and dynamax
-72 <= action <= 76: move 2 and dynamax
-77 <= action <= 81: move 3 and dynamax
-82 <= action <= 86: move 4 and dynamax
-87 <= action <= 91: move 1 and terastallize
-92 <= action <= 96: move 2 and terastallize
-97 <= action <= 101: move 3 and terastallize
-102 <= action <= 106: move 4 and terastallize
+{f'The action you already chose for your first pokemon, {battle.active_pokemon[0]}, was {last_order}.' if pos == 1 else ''}
 
-For all move actions, notice that there are 5 allowed values for each slot. This is because the target is also encoded into the action. The target encoding is:
-+0: Your Active Pokemon #2
-+1: Your Active Pokemon #1
-+2: No target (move doesn't target anything)
-+3: Opponent's Active Pokemon #1
-+4: Opponent's Active Pokemon #2
-For example, if I want to use my first Pokemon's first attack on the opponent's second Pokemon and terastallize, and use my second Pokemon's third move on the opponent's first Pokemon, this is how we would derive the action:
-1. Our first Pokemon wants to use its first move, which is in the range 7 <= action <= 11, but it wants to terastallize, so the range would be 87 <= action <= 91. We want to target the opponent's second Pokemon, so we take the +4 index of that range, which yields 91.
-2. Our second Pokemon wants to use its third move, which is in the range 17 <= action <= 21. We want to target the opponent's first Pokemon, so we take the +3 index of that range, which yields 20.
-Therefore, our final answer is [91, 20].
+Here are your available actions:
+{listed_action_space}
 
-To aid you in making your decision, we provide you action spaces to make sure that your actions are valid. The actions you pick MUST BE INCLUDED in the corresponding list.
-
-The following is the action space of your first Pokemon (the action space for action1):
-{action_space1}
-
-The following is the action space of your second Pokemon (the action space for action2):
-{action_space2}
-
-NOTE: if both Pokemon are switching, they cannot switch into the same Pokemon. Also, you cannot terastallize with both Pokemon, even if the option is available to both. Only one Pokemon can terastallize.
-Therefore, the following example actions are invalid, no matter what the action spaces are:
-1. [4, 4] (because that is switching in the same Pokemon for both options)
-2. [91, 102] (because that is terastallizing both Pokemon simultaneously)
-
-Please remember, your only allowed response MUST BE of the format [<action1>, <action2>]. PLEASE GIVE NO FURTHER RESPONSE THAN THAT!
+Respond with the number corresponding to your chosen action. PLEASE GIVE NO FURTHER RESPONSE THAN THAT, JUST THE NUMBER WITH NO PUNCTUATION!
 """
 
     @staticmethod
@@ -293,3 +327,20 @@ Side conditions on this player's side (the number of layers of the SideCondition
                 Current PP: {move.current_pp}
                 Max PP: {move.max_pp}
 """
+
+    @staticmethod
+    def _get_mask(ally_actions: torch.Tensor) -> torch.Tensor:
+        indices = (
+            torch.arange(doubles_act_len, device=ally_actions.device)
+            .unsqueeze(0)
+            .expand(len(ally_actions), -1)
+        )
+        ally_switched = (1 <= ally_actions) & (ally_actions <= 6)
+        ally_terastallized = ally_actions >= 87
+        mask = (
+            ((27 <= indices) & (indices < 87))
+            | ((indices == ally_actions) & ally_switched)
+            | ((indices >= 87) & ally_terastallized)
+        )
+        mask = torch.where(mask == 1, float("-inf"), 0)
+        return mask
