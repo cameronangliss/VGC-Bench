@@ -120,6 +120,14 @@ class LLMPlayer(Player):
             )
         return order_str
 
+    @staticmethod
+    def readable_boost(boost: int) -> float:
+        if boost >= 0:
+            modifier = (2 + boost) / 2
+        else:
+            modifier = 2 / (2 - boost)
+        return round(modifier, ndigits=2)
+
     def teampreview(self, battle: AbstractBattle) -> str:
         assert isinstance(battle, DoubleBattle)
         team_pokemon = list(battle.team.values())
@@ -213,6 +221,8 @@ Slot 2: {LLMPlayer.explain_pokemon(a2) if a2 is not None else "empty"}
 
 {LLMPlayer.explain_pokemon(benched_pokemon[1])}
 
+{LLMPlayer.explain_pokemon(benched_pokemon[2]) if len(benched_pokemon) > 2 else "empty"}
+
 ########## OPPONENT SIDE ##########
 
 Rating: {battle.opponent_rating}
@@ -235,23 +245,7 @@ Active side conditions: {", ".join([str(s) for s in battle.opponent_side_conditi
 
 {LLMPlayer.explain_pokemon(opp_benched_pokemon[3])}
 
-{LLMPlayer.explain_pokemon(opp_benched_pokemon[4]) if len(opp_benched_pokemon) > 4 else ""}
-
-########## BATTLE TIPS ##########
-
-Targeting and Damage
-    - Prefer targeting enemy Pokémon, not your own allies
-    - Moves with super-effective typing are generally stronger
-    - Target enemies with lower HP first if they can be KO'd
-
-Switching
-    - Switch to preserve a low-HP Pokémon if it has value later
-    - Avoid switching into super-effective attacks unless necessary
-    - Use switch-ins to block predicted status moves or set up positioning
-
-Endgame Considerations
-    - Don't sacrifice your last Pokémon unless it guarantees a win
-    - Consider opponent's bench and Tera potential before committing
+{LLMPlayer.explain_pokemon(opp_benched_pokemon[4]) if len(opp_benched_pokemon) > 4 else "empty"}
 
 ########## MAKE YOUR DECISION ##########
 
@@ -266,6 +260,17 @@ Respond with the number corresponding to your chosen action. PLEASE GIVE NO FURT
 
     @staticmethod
     def explain_pokemon(pokemon: Pokemon) -> str:
+        if pokemon.fainted:
+            return f"{pokemon.base_species} (fainted)"
+        elif not pokemon.active:
+            return LLMPlayer.explain_inactive_pokemon(pokemon)
+        else:
+            return LLMPlayer.explain_inactive_pokemon(pokemon) + f"""
+{LLMPlayer.explain_boosts(pokemon.boosts)}
+Effects: {", ".join([str(e) for e in pokemon.effects]) or "None"}"""
+
+    @staticmethod
+    def explain_inactive_pokemon(pokemon: Pokemon) -> str:
         moves = list(pokemon.moves.values())
         reveal_str = "revealed" if pokemon.revealed else "unrevealed"
         type_str = "/".join([str(t) for t in pokemon.types])
@@ -278,12 +283,13 @@ Respond with the number corresponding to your chosen action. PLEASE GIVE NO FURT
         if pokemon.fainted:
             return f"{pokemon.base_species} (fainted)"
         return f"""{pokemon.base_species} ({reveal_str} in battle), a {type_str}-type pokemon ({tera_type_str}) with {hp_str} HP, ability {pokemon.ability}, and held item {pokemon.item or "None"}.
-{pokemon.base_species} has {len(moves)} moves:
+Status Effect: {pokemon.status}
+Moves:
     - {LLMPlayer.explain_move(moves[0]) if len(moves) > 0 else "None"}
     - {LLMPlayer.explain_move(moves[1]) if len(moves) > 1 else "None"}
     - {LLMPlayer.explain_move(moves[2]) if len(moves) > 2 else "None"}
     - {LLMPlayer.explain_move(moves[3]) if len(moves) > 3 else "None"}
-{pokemon.base_species} has base stats:
+Base stats:
     {pokemon.base_stats["hp"]} HP
     {pokemon.base_stats["atk"]} Attack
     {pokemon.base_stats["def"]} Defense
@@ -293,7 +299,28 @@ Respond with the number corresponding to your chosen action. PLEASE GIVE NO FURT
 
     @staticmethod
     def explain_move(move: Move) -> str:
-        return f"{move.id}, a {move.type}-type move with {move.base_power} power and {int(100 * move.accuracy)}% accuracy"
+        return f"{move.id}, a {move.type}-type move with {move.base_power} power, {int(100 * move.accuracy)}% accuracy, and {move.current_pp}/{move.max_pp} pp"
+
+    @staticmethod
+    def explain_boosts(boosts: dict[str, int]) -> str:
+        boost_str = "Stat Modifiers:"
+        if boosts['atk'] != 0:
+            boost_str += f"\n    Attack: x{LLMPlayer.readable_boost(boosts['atk'])}"
+        if boosts['def'] != 0:
+            boost_str += f"\n    Defense: x{LLMPlayer.readable_boost(boosts['def'])}"
+        if boosts['spa'] != 0:
+            boost_str += f"\n    Special Attack: x{LLMPlayer.readable_boost(boosts['spa'])}"
+        if boosts['spd'] != 0:
+            boost_str += f"\n    Special Defense: x{LLMPlayer.readable_boost(boosts['spd'])}"
+        if boosts['spe'] != 0:
+            boost_str += f"\n    Speed: x{LLMPlayer.readable_boost(boosts['spe'])}"
+        if boosts['accuracy'] != 0:
+            boost_str += f"\n    Accuracy: x{LLMPlayer.readable_boost(boosts['accuracy'])}"
+        if boosts['evasion'] != 0:
+            boost_str += f"\n    Evasion: x{LLMPlayer.readable_boost(boosts['evasion'])}"
+        if boost_str == "Stat Modifiers:":
+            boost_str += " None"
+        return boost_str
 
     @staticmethod
     def _get_mask(ally_actions: torch.Tensor) -> torch.Tensor:
