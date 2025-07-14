@@ -86,32 +86,32 @@ class LLMPlayer(Player):
         order_str = str(order).removeprefix("/choose ")
         if order_str.endswith(" 1"):
             target = (
-                battle.active_pokemon[0].base_species
-                if battle.active_pokemon[0] is not None
-                else "empty slot"
-            )
-            order_str = f"{order_str[:-2]} targeting {target} (foe's pokemon)"
-        elif order_str.endswith(" 2"):
-            target = (
-                battle.active_pokemon[1].base_species
-                if battle.active_pokemon[1] is not None
-                else "empty slot"
-            )
-            order_str = f"{order_str[:-2]} targeting {target} (foe's pokemon)"
-        elif order_str.endswith(" -1"):
-            target = (
                 battle.opponent_active_pokemon[0].base_species
                 if battle.opponent_active_pokemon[0] is not None
                 else "empty slot"
             )
-            order_str = f"{order_str[:-3]} targeting {target} (your pokemon)"
-        elif order_str.endswith(" -2"):
+            order_str = f"{order_str[:-2]} targeting foe's {target}"
+        elif order_str.endswith(" 2"):
             target = (
                 battle.opponent_active_pokemon[1].base_species
                 if battle.opponent_active_pokemon[1] is not None
                 else "empty slot"
             )
-            order_str = f"{order_str[:-3]} targeting {target} (your pokemon)"
+            order_str = f"{order_str[:-2]} targeting foe's {target}"
+        elif order_str.endswith(" -1"):
+            target = (
+                battle.active_pokemon[0].base_species
+                if battle.active_pokemon[0] is not None
+                else "empty slot"
+            )
+            order_str = f"{order_str[:-3]} targeting your {target}"
+        elif order_str.endswith(" -2"):
+            target = (
+                battle.active_pokemon[1].base_species
+                if battle.active_pokemon[1] is not None
+                else "empty slot"
+            )
+            order_str = f"{order_str[:-3]} targeting your {target}"
         if "terastallize" in order_str:
             active_mon = battle.active_pokemon[pos]
             assert active_mon is not None
@@ -179,9 +179,7 @@ Do **not** include any extra text, punctuation, or explanation.
         last_order: BattleOrder | None,
         pos: int,
     ) -> str:
-        glob = LLMPlayer.explain_global(battle)
-        side = LLMPlayer.explain_side(battle)
-        opp_side = LLMPlayer.explain_side(battle, opp=True)
+        active_mon = battle.active_pokemon[pos]
         [a1, a2] = battle.active_pokemon
         [o1, o2] = battle.opponent_active_pokemon
         benched_pokemon = [
@@ -191,142 +189,111 @@ Do **not** include any extra text, punctuation, or explanation.
         ]
         opp_benched_pokemon = [p for p in battle.opponent_team.values() if p not in [o1, o2]]
         listed_action_space = "\n".join(f"{i + 1}. {name}" for i, name in enumerate(action_names))
-        return f"""
-The following is what you are currently observing:
+        return f"""The following is what you are currently observing:
 
-Global Conditions in Battle:
-{glob}
-Side Conditions:
-{side}
-Active Pokemon:
-    1. {a1.base_species if a1 is not None else "empty"}
-{LLMPlayer.explain_pokemon(a1) if a1 is not None else ""}
-    2. {a2.base_species if a2 is not None else "empty"}
-{LLMPlayer.explain_pokemon(a2) if a2 is not None else ""}
-Benched Pokemon:
-    1. {benched_pokemon[0].base_species}
+########## GLOBAL EFFECTS ##########
+
+Active weather: {list(battle.weather.keys())[0] if battle.weather else "None"}
+Active fields: {", ".join([str(f) for f in battle.fields.keys()]) or "None"}
+
+########## YOUR SIDE ##########
+
+Terastallization available: {any([c is not False for c in battle.can_tera])}
+Active side conditions: {", ".join([str(s) for s in battle.side_conditions.keys()]) or None}
+
+### Active Pokemon ###
+
+Slot 1: {LLMPlayer.explain_pokemon(a1) if a1 is not None else "empty"}
+
+Slot 2: {LLMPlayer.explain_pokemon(a2) if a2 is not None else "empty"}
+
+### Benched Pokemon ###
+
 {LLMPlayer.explain_pokemon(benched_pokemon[0])}
-    2. {benched_pokemon[1].base_species}
+
 {LLMPlayer.explain_pokemon(benched_pokemon[1])}
-    3. {benched_pokemon[2].base_species if len(benched_pokemon) > 2 else "empty"}
-{LLMPlayer.explain_pokemon(benched_pokemon[2]) if len(benched_pokemon) > 2 else ""}
-Opponent Side Conditions:
-{opp_side}
-Opponent Active Pokemon:
-    1. {o1.base_species if o1 is not None else "empty"}
-{LLMPlayer.explain_pokemon(o1) if o1 is not None else ""}
-    2. {o2.base_species if o2 is not None else "empty"}
-{LLMPlayer.explain_pokemon(o2) if o2 is not None else ""}
-Opponent Benched Pokemon:
-    1. {opp_benched_pokemon[0].base_species}
+
+########## OPPONENT SIDE ##########
+
+Rating: {battle.opponent_rating}
+Terastallization available: {battle._opponent_can_terrastallize}
+Active side conditions: {", ".join([str(s) for s in battle.opponent_side_conditions.keys()]) or "None"}
+
+### Active Pokemon ###
+
+{LLMPlayer.explain_pokemon(o1) if o1 is not None else "empty"}
+
+{LLMPlayer.explain_pokemon(o2) if o2 is not None else "empty"}
+
+### Benched Pokemon ###
+
 {LLMPlayer.explain_pokemon(opp_benched_pokemon[0])}
-    2. {opp_benched_pokemon[1].base_species}
+
 {LLMPlayer.explain_pokemon(opp_benched_pokemon[1])}
-    3. {opp_benched_pokemon[2].base_species}
+
 {LLMPlayer.explain_pokemon(opp_benched_pokemon[2])}
-    4. {opp_benched_pokemon[3].base_species}
+
 {LLMPlayer.explain_pokemon(opp_benched_pokemon[3])}
-    5. {opp_benched_pokemon[4].base_species if len(opp_benched_pokemon) > 4 else "empty"}
+
 {LLMPlayer.explain_pokemon(opp_benched_pokemon[4]) if len(opp_benched_pokemon) > 4 else ""}
 
-Please select the optimal action given this observation for your {['first', 'second'][pos]} active pokemon: {battle.active_pokemon[pos]}.
+########## BATTLE TIPS ##########
 
-{f'The action you already chose for your first pokemon, {battle.active_pokemon[0]}, was {last_order}.' if pos == 1 else ''}
+Targeting and Damage
+    - Prefer targeting enemy Pokémon, not your own allies
+    - Moves with super-effective typing are generally stronger
+    - Target enemies with lower HP first if they can be KO'd
+
+Switching
+    - Switch to preserve a low-HP Pokémon if it has value later
+    - Avoid switching into super-effective attacks unless necessary
+    - Use switch-ins to block predicted status moves or set up positioning
+
+Endgame Considerations
+    - Don't sacrifice your last Pokémon unless it guarantees a win
+    - Consider opponent's bench and Tera potential before committing
+
+########## MAKE YOUR DECISION ##########
+
+Please select the optimal action for slot {pos + 1}{f" (your {active_mon.base_species})" if active_mon is not None else ""}.
+
+{f'The action you already chose for your first slot was {last_order}.' if pos == 1 else ''}
 
 Here are your available actions:
 {listed_action_space}
 
-Respond with the number corresponding to your chosen action. PLEASE GIVE NO FURTHER RESPONSE THAN THAT, JUST THE NUMBER WITH NO PUNCTUATION!
-"""
-
-    @staticmethod
-    def explain_global(battle: DoubleBattle) -> str:
-        return f"""
-    Current Turn: {battle.turn}
-    Your Pokemon 1 is being forced to switch: {battle.force_switch[0]}
-    Your Pokemon 2 is being forced to switch: {battle.force_switch[1]}
-    The active weather in the game (as a dictionary, mapping to its starting turn): {battle.weather}
-    The active fields in the game (as a dictionary, mapping to its starting turn): {battle.fields}
-"""
-
-    @staticmethod
-    def explain_side(battle: DoubleBattle, opp: bool = False) -> str:
-        gims = [
-            battle.can_mega_evolve[0],
-            battle.can_z_move[0],
-            battle.can_dynamax[0],
-            battle.can_tera[0] is not False,
-        ]
-        opp_gims = [
-            battle.opponent_can_mega_evolve[0],
-            battle.opponent_can_z_move[0],
-            battle.opponent_can_dynamax[0],
-            battle._opponent_can_terrastallize,
-        ]
-        side_conds = battle.opponent_side_conditions if opp else battle.side_conditions
-        gims = opp_gims if opp else gims
-        rat = battle.opponent_rating if opp else battle.rating
-        return f"""
-Player Rating: {rat}
-Player can still mega evolve: {gims[0]}
-Player can still z-move: {gims[1]}
-Player can still dynamax/gigantamax: {gims[2]}
-Player can still terastallize: {gims[3]}
-Side conditions on this player's side (the number of layers of the SideCondition if the side condition is stackable, or the turn where the SideCondition was setup otherwise): {side_conds}
-"""
+Respond with the number corresponding to your chosen action. PLEASE GIVE NO FURTHER RESPONSE THAN THAT, JUST THE NUMBER WITH NO PUNCTUATION!"""
 
     @staticmethod
     def explain_pokemon(pokemon: Pokemon) -> str:
-        move_names = list(pokemon.moves.keys())
         moves = list(pokemon.moves.values())
-        return f"""
-        Ability: {pokemon.ability}
-        Item: {pokemon.item}
-        Moves:
-            1. {move_names[0] if move_names[0] else ""}
-        {LLMPlayer.explain_move(moves[0]) if moves[0] else ""}
-            2. {move_names[1] if move_names[1] else ""}
-        {LLMPlayer.explain_move(moves[1]) if moves[1] else ""}
-            3. {move_names[2] if move_names[2] else ""}
-        {LLMPlayer.explain_move(moves[2]) if moves[2] else ""}
-            4. {move_names[3] if move_names[3] else ""}
-        {LLMPlayer.explain_move(moves[3]) if moves[3] else ""}
-        Types: {pokemon.types[0]}, {pokemon.types[1] if len(pokemon.types) == 2 else ""}
-        Tera Type: {pokemon.tera_type}
-        Stats: {pokemon.stats["hp"]} HP, {pokemon.stats["atk"]} Attack, {pokemon.stats["def"]} Defense, {pokemon.stats["spa"]} Special Attack, {pokemon.stats["spd"]} Special Defense, {pokemon.stats["spe"]} Speed
-        Gender: {pokemon.gender}
-        Weight: {pokemon.weight}
-        Current HP Fraction: {pokemon.current_hp_fraction}
-        Has been revealed in battle: {pokemon.revealed}
-        Status effect: {pokemon.status}
-        Number of turns with that status effect (only for toxic and sleep): {pokemon.status_counter}
-        Boosts: {pokemon.boosts["accuracy"]} Accuracy, {pokemon.boosts["atk"]} Attack, {pokemon.boosts["def"]} Defense, {pokemon.boosts["evasion"]} Evasion, {pokemon.boosts["spa"]} Special Attack, {pokemon.boosts["spd"]} Special Defense, {pokemon.boosts["spe"]} Speed
-        Effects (mapping effect name to number of turns left for the effect): {pokemon.effects}
-        Is first turn being in (effects moves like fake out): {pokemon.first_turn}
-        Number of turns protect has been used in a row: {pokemon.protect_counter}
-        Currently recharging (from a move like hyper beam): {pokemon.must_recharge}
-        Is currently preparing a move (like solar beam): {pokemon.preparing}
-        Is dynamaxed: {pokemon.is_dynamaxed}
-        Is terastallized: {pokemon.is_terastallized}
-"""
+        reveal_str = "revealed" if pokemon.revealed else "unrevealed"
+        type_str = "/".join([str(t) for t in pokemon.types])
+        tera_type_str = (
+            f"terastallized to {pokemon.tera_type}-type"
+            if pokemon.is_terastallized
+            else f"and unused tera-type of {pokemon.tera_type}"
+        )
+        hp_str = f"{round(100 * pokemon.current_hp_fraction)}%" if pokemon.max_hp > 0 else "unknown"
+        if pokemon.fainted:
+            return f"{pokemon.base_species} (fainted)"
+        return f"""{pokemon.base_species} ({reveal_str} in battle), a {type_str}-type pokemon ({tera_type_str}) with {hp_str} HP, ability {pokemon.ability}, and held item {pokemon.item or "None"}.
+{pokemon.base_species} has {len(moves)} moves:
+    - {LLMPlayer.explain_move(moves[0]) if len(moves) > 0 else "None"}
+    - {LLMPlayer.explain_move(moves[1]) if len(moves) > 1 else "None"}
+    - {LLMPlayer.explain_move(moves[2]) if len(moves) > 2 else "None"}
+    - {LLMPlayer.explain_move(moves[3]) if len(moves) > 3 else "None"}
+{pokemon.base_species} has base stats:
+    {pokemon.base_stats["hp"]} HP
+    {pokemon.base_stats["atk"]} Attack
+    {pokemon.base_stats["def"]} Defense
+    {pokemon.base_stats["spa"]} Special Attack
+    {pokemon.base_stats["spd"]} Special Defense
+    {pokemon.base_stats["spe"]} Speed"""
 
     @staticmethod
     def explain_move(move: Move) -> str:
-        return f"""
-                Power: {move.base_power}
-                Accuracy: {move.accuracy}
-                Type: {move.type}
-                Category: {move.category}
-                Target: {move.target}
-                Priority: {move.priority}
-                Critical-hit Ratio: {move.crit_ratio}
-                Drain ratio: {move.drain}
-                Forces switch: {move.force_switch}
-                Has recoil damage: {move.recoil}
-                Switches self out: {move.self_switch}
-                Current PP: {move.current_pp}
-                Max PP: {move.max_pp}
-"""
+        return f"{move.id}, a {move.type}-type move with {move.base_power} power and {int(100 * move.accuracy)}% accuracy"
 
     @staticmethod
     def _get_mask(ally_actions: torch.Tensor) -> torch.Tensor:
