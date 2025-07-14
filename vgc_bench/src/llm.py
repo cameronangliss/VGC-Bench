@@ -188,8 +188,26 @@ Do **not** include any extra text, punctuation, or explanation.
         pos: int,
     ) -> str:
         active_mon = battle.active_pokemon[pos]
-        [a1, a2] = battle.active_pokemon
-        [o1, o2] = battle.opponent_active_pokemon
+        a1: Pokemon | None = None
+        a2: Pokemon | None = None
+        o1: Pokemon | None = None
+        o2: Pokemon | None = None
+        if len(battle._active_pokemon) == 1:
+            if f"{battle.player_role}a" in battle._active_pokemon:
+                a1 = battle._active_pokemon[f"{battle.player_role}a"]
+            else:
+                a2 = battle._active_pokemon[f"{battle.player_role}b"]
+        elif len(battle._active_pokemon) == 2:
+            a1 = battle._active_pokemon[f"{battle.player_role}a"]
+            a2 = battle._active_pokemon[f"{battle.player_role}b"]
+        if len(battle._opponent_active_pokemon) == 1:
+            if f"{battle.opponent_role}a" in battle._opponent_active_pokemon:
+                o1 = battle._opponent_active_pokemon[f"{battle.opponent_role}a"]
+            else:
+                o2 = battle._opponent_active_pokemon[f"{battle.opponent_role}b"]
+        elif len(battle._opponent_active_pokemon) == 2:
+            o1 = battle._opponent_active_pokemon[f"{battle.opponent_role}a"]
+            o2 = battle._opponent_active_pokemon[f"{battle.opponent_role}b"]
         benched_pokemon = [
             p
             for i, p in enumerate(battle.team.values())
@@ -206,7 +224,7 @@ Active fields: {", ".join([str(f) for f in battle.fields.keys()]) or "None"}
 
 ########## YOUR SIDE ##########
 
-Terastallization available: {any([c is not False for c in battle.can_tera])}
+{"Tera available." if any([c is not False for c in battle.can_tera]) else "Tera used."}
 Active side conditions: {", ".join([str(s) for s in battle.side_conditions.keys()]) or None}
 
 ### Active Pokemon ###
@@ -217,41 +235,35 @@ Slot 2: {LLMPlayer.explain_pokemon(a2) if a2 is not None else "empty"}
 
 ### Benched Pokemon ###
 
-{LLMPlayer.explain_pokemon(benched_pokemon[0])}
+1. {LLMPlayer.explain_pokemon(benched_pokemon[0])}
 
-{LLMPlayer.explain_pokemon(benched_pokemon[1])}
-
-{LLMPlayer.explain_pokemon(benched_pokemon[2]) if len(benched_pokemon) > 2 else "empty"}
+2. {LLMPlayer.explain_pokemon(benched_pokemon[1])}
 
 ########## OPPONENT SIDE ##########
 
 Rating: {battle.opponent_rating}
-Terastallization available: {battle._opponent_can_terrastallize}
+{"Tera available for opponent!" if battle._opponent_can_terrastallize else "Opponent's tera already used."}
 Active side conditions: {", ".join([str(s) for s in battle.opponent_side_conditions.keys()]) or "None"}
 
 ### Active Pokemon ###
 
-{LLMPlayer.explain_pokemon(o1) if o1 is not None else "empty"}
+1. {LLMPlayer.explain_pokemon(o1) if o1 is not None else "empty"}
 
-{LLMPlayer.explain_pokemon(o2) if o2 is not None else "empty"}
+2. {LLMPlayer.explain_pokemon(o2) if o2 is not None else "empty"}
 
 ### Benched Pokemon ###
 
-{LLMPlayer.explain_pokemon(opp_benched_pokemon[0])}
+1. {LLMPlayer.explain_pokemon(opp_benched_pokemon[0])}
 
-{LLMPlayer.explain_pokemon(opp_benched_pokemon[1])}
+2. {LLMPlayer.explain_pokemon(opp_benched_pokemon[1])}
 
-{LLMPlayer.explain_pokemon(opp_benched_pokemon[2])}
+3. {LLMPlayer.explain_pokemon(opp_benched_pokemon[2])}
 
-{LLMPlayer.explain_pokemon(opp_benched_pokemon[3])}
-
-{LLMPlayer.explain_pokemon(opp_benched_pokemon[4]) if len(opp_benched_pokemon) > 4 else "empty"}
+4. {LLMPlayer.explain_pokemon(opp_benched_pokemon[3])}
 
 ########## MAKE YOUR DECISION ##########
 
-Please select the optimal action for slot {pos + 1}{f" (your {active_mon.base_species})" if active_mon is not None else ""}.
-
-{f'The action you already chose for your first slot was {last_order}.' if pos == 1 else ''}
+Please select the optimal action for slot {pos + 1}{f" (your {active_mon.base_species})" if active_mon is not None else ""}. {f"The action you already chose for your first slot was {last_order}." if pos == 1 else ""}
 
 Here are your available actions:
 {listed_action_space}
