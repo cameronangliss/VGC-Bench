@@ -1,4 +1,4 @@
-import re
+import random
 from typing import Any
 
 import numpy as np
@@ -76,10 +76,50 @@ class LLMPlayer(Player):
         try:
             action_index = int(response) - 1
             action = action_space[action_index]
+        except IndexError:
+            print(f"INDEX OUT OF BOUNDS: {response}", flush=True)
+            action = -2
         except ValueError:
-            print(f"FAULTY RESPONSE: {response}", flush=True)
+            print(f"INVALID RESPONSE: {response}", flush=True)
             action = -2
         return action
+
+    def teampreview(self, battle: AbstractBattle) -> str:
+        assert isinstance(battle, DoubleBattle)
+        actives = []
+        bench = []
+        for _ in range(2):
+            actives += [self.teampreview_individual(battle, actives, bench)]
+        for _ in range(2):
+            bench += [self.teampreview_individual(battle, actives, bench)]
+        self.__teampreview_draft = [
+            i for i, p in enumerate(battle.team.values(), start=1) if p in actives + bench
+        ]
+        return self.random_teampreview(battle)
+
+    def teampreview_individual(
+        self, battle: DoubleBattle, actives: list[Pokemon], bench: list[Pokemon]
+    ) -> Pokemon:
+        remaining_pokemon = [p for p in battle.team.values() if p not in actives and p not in bench]
+        prompt = self.explain_battle_teampreview(battle, actives, bench)
+        input_dict = [
+            {
+                "role": "system",
+                "content": f"You are an expert Pokemon VGC competitor playing a Pokemon battle in the {battle.format} format.",
+            },
+            {"role": "user", "content": prompt},
+        ]
+        response: str = self.model(input_dict)[0]["generated_text"][-1]["content"]  # type: ignore
+        try:
+            action_index = int(response) - 1
+            mon = remaining_pokemon[action_index]
+        except IndexError:
+            print(f"INDEX OUT OF BOUNDS (teampreview): {response}", flush=True)
+            mon = random.choice(remaining_pokemon)
+        except ValueError:
+            print(f"INVALID RESPONSE (teampreview): {response}", flush=True)
+            mon = random.choice(remaining_pokemon)
+        return mon
 
     @staticmethod
     def readable_battle_order(battle: DoubleBattle, order: BattleOrder, pos: int) -> str:
@@ -121,63 +161,25 @@ class LLMPlayer(Player):
         return order_str
 
     @staticmethod
+    def readable_remaining_pokemon(remaining_pokemon: list[Pokemon]) -> str:
+        remain_str = f"1. {LLMPlayer.explain_inactive_pokemon(remaining_pokemon[0])}"
+        remain_str += f"\n\n2. {LLMPlayer.explain_inactive_pokemon(remaining_pokemon[1])}"
+        remain_str += f"\n\n3. {LLMPlayer.explain_inactive_pokemon(remaining_pokemon[2])}"
+        if len(remaining_pokemon) > 3:
+            remain_str += f"\n\n4. {LLMPlayer.explain_inactive_pokemon(remaining_pokemon[3])}"
+        if len(remaining_pokemon) > 4:
+            remain_str += f"\n\n5. {LLMPlayer.explain_inactive_pokemon(remaining_pokemon[4])}"
+        if len(remaining_pokemon) > 5:
+            remain_str += f"\n\n6. {LLMPlayer.explain_inactive_pokemon(remaining_pokemon[5])}"
+        return remain_str
+
+    @staticmethod
     def readable_boost(boost: int) -> float:
         if boost >= 0:
             modifier = (2 + boost) / 2
         else:
             modifier = 2 / (2 - boost)
         return round(modifier, ndigits=2)
-
-    def teampreview(self, battle: AbstractBattle) -> str:
-        assert isinstance(battle, DoubleBattle)
-        team_pokemon = list(battle.team.values())
-        opponent_pokemon = list(battle.opponent_team.values())
-        prompt = f"""
-Here is the following observation:
-
-Your Pokemon:
-    1. {team_pokemon[0].base_species}
-{LLMPlayer.explain_pokemon(team_pokemon[0])}
-    2. {team_pokemon[1].base_species}
-{LLMPlayer.explain_pokemon(team_pokemon[1])}
-    3. {team_pokemon[2].base_species}
-{LLMPlayer.explain_pokemon(team_pokemon[2])}
-    4. {team_pokemon[3].base_species}
-{LLMPlayer.explain_pokemon(team_pokemon[3])}
-    5. {team_pokemon[4].base_species}
-{LLMPlayer.explain_pokemon(team_pokemon[4])}
-    6. {team_pokemon[5].base_species}
-{LLMPlayer.explain_pokemon(team_pokemon[5])}
-Opponent Pokemon:
-    1. {opponent_pokemon[0].base_species}
-{LLMPlayer.explain_pokemon(opponent_pokemon[0])}
-    2. {opponent_pokemon[1].base_species}
-{LLMPlayer.explain_pokemon(opponent_pokemon[1])}
-    3. {opponent_pokemon[2].base_species}
-{LLMPlayer.explain_pokemon(opponent_pokemon[2])}
-    4. {opponent_pokemon[3].base_species}
-{LLMPlayer.explain_pokemon(opponent_pokemon[3])}
-    5. {opponent_pokemon[4].base_species}
-{LLMPlayer.explain_pokemon(opponent_pokemon[4])}
-    6. {opponent_pokemon[5].base_species}
-{LLMPlayer.explain_pokemon(opponent_pokemon[5])}
-
-You must respond with the indices of which Pokemon you wish to bring to the battle from teampreview. You can only select from your Pokemon, NOT the opponent's Pokemon.
-Please respond with the format /team <action1><action2><action3><action4>. The order that you set the numbers determines the order that they come in. So, if you send /turn 1246, 1 and 2 will lead and 4 and 6 will be on the bench, whereas if you do /turn 4162, then 4 and 1 will lead and 6 and 2 will be on the bench. You need not limit yourself to the set of numbers 1, 2, 4, and 6; any number from 1-6 is acceptable, and each can only be used once.
-Do **not** include any extra text, punctuation, or explanation.
-"""
-        input_dict = [
-            {
-                "role": "system",
-                "content": f"You are an expert Pokemon VGC competitor playing a Pokemon battle in the {battle.format} format. You are currently in teampreview.",
-            },
-            {"role": "user", "content": prompt},
-        ]
-        response: str = self.model(input_dict)[0]["generated_text"][-1]["content"]  # type: ignore
-        if re.match(r"^/team (?!.*([1-6]).*\1)[1-6]{4}$", response) is None:
-            response = self.random_teampreview(battle)[:-2]
-        self.__teampreview_draft = [int(i) for i in response[6:]]
-        return response
 
     @staticmethod
     def explain_battle(
@@ -271,15 +273,64 @@ Here are your available actions:
 Respond with the number corresponding to your chosen action. PLEASE GIVE NO FURTHER RESPONSE THAN THAT, JUST THE NUMBER WITH NO PUNCTUATION!"""
 
     @staticmethod
+    def explain_battle_teampreview(
+        battle: DoubleBattle, actives: list[Pokemon], bench: list[Pokemon]
+    ) -> str:
+        remaining_pokemon = [p for p in battle.team.values() if p not in actives and p not in bench]
+        opponent_pokemon = list(battle.opponent_team.values())
+        return f"""The following is what you are currently observing in teampreview:
+
+########## YOUR SIDE ##########
+
+### Active Pokemon ###
+
+1. {LLMPlayer.explain_inactive_pokemon(actives[0]) if actives else "empty"}
+
+2. {LLMPlayer.explain_inactive_pokemon(actives[1]) if len(actives) > 1 else "empty"}
+
+### Benched Pokemon ###
+
+1. {LLMPlayer.explain_inactive_pokemon(bench[0]) if bench else "empty"}
+
+2. {LLMPlayer.explain_inactive_pokemon(bench[1]) if len(bench) > 1 else "empty"}
+
+### Remaining Pokemon ###
+
+{LLMPlayer.readable_remaining_pokemon(remaining_pokemon)}
+
+########## OPPONENT SIDE ##########
+
+1. {LLMPlayer.explain_inactive_pokemon(opponent_pokemon[0])}
+
+2. {LLMPlayer.explain_inactive_pokemon(opponent_pokemon[1])}
+
+3. {LLMPlayer.explain_inactive_pokemon(opponent_pokemon[2])}
+
+4. {LLMPlayer.explain_inactive_pokemon(opponent_pokemon[3])}
+
+5. {LLMPlayer.explain_inactive_pokemon(opponent_pokemon[4])}
+
+6. {LLMPlayer.explain_inactive_pokemon(opponent_pokemon[5])}
+
+########## MAKE YOUR DECISION ##########
+
+Please select a Pokemon from the "Remaining Pokemon" section to be put in position {len(actives) + 1 if len(actives) < 2 else len(bench) + 1} of your "{"Active" if len(actives) < 2 else "Benched"} Pokemon" section.
+
+Respond with the number corresponding to your chosen Pokemon from the "Remaining Pokemon" list. PLEASE GIVE NO FURTHER RESPONSE THAN THAT, JUST THE NUMBER WITH NO PUNCTUATION!"""
+
+    @staticmethod
     def explain_pokemon(pokemon: Pokemon) -> str:
         if pokemon.fainted:
             return f"{pokemon.base_species} (fainted)"
         elif not pokemon.active:
             return LLMPlayer.explain_inactive_pokemon(pokemon)
         else:
-            return LLMPlayer.explain_inactive_pokemon(pokemon) + f"""
+            return (
+                LLMPlayer.explain_inactive_pokemon(pokemon)
+                + f"""
 {LLMPlayer.explain_boosts(pokemon.boosts)}
 Effects: {", ".join([str(e) for e in pokemon.effects]) or "None"}"""
+            )
 
     @staticmethod
     def explain_inactive_pokemon(pokemon: Pokemon) -> str:
@@ -316,19 +367,19 @@ Base stats:
     @staticmethod
     def explain_boosts(boosts: dict[str, int]) -> str:
         boost_str = "Stat Modifiers:"
-        if boosts['atk'] != 0:
+        if boosts["atk"] != 0:
             boost_str += f"\n    Attack: x{LLMPlayer.readable_boost(boosts['atk'])}"
-        if boosts['def'] != 0:
+        if boosts["def"] != 0:
             boost_str += f"\n    Defense: x{LLMPlayer.readable_boost(boosts['def'])}"
-        if boosts['spa'] != 0:
+        if boosts["spa"] != 0:
             boost_str += f"\n    Special Attack: x{LLMPlayer.readable_boost(boosts['spa'])}"
-        if boosts['spd'] != 0:
+        if boosts["spd"] != 0:
             boost_str += f"\n    Special Defense: x{LLMPlayer.readable_boost(boosts['spd'])}"
-        if boosts['spe'] != 0:
+        if boosts["spe"] != 0:
             boost_str += f"\n    Speed: x{LLMPlayer.readable_boost(boosts['spe'])}"
-        if boosts['accuracy'] != 0:
+        if boosts["accuracy"] != 0:
             boost_str += f"\n    Accuracy: x{LLMPlayer.readable_boost(boosts['accuracy'])}"
-        if boosts['evasion'] != 0:
+        if boosts["evasion"] != 0:
             boost_str += f"\n    Evasion: x{LLMPlayer.readable_boost(boosts['evasion'])}"
         if boost_str == "Stat Modifiers:":
             boost_str += " None"
