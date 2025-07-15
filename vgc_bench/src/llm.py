@@ -60,7 +60,7 @@ class LLMPlayer(Player):
             for a in action_space
         ]
         action_names = [
-            self.readable_battle_order(battle, o, pos) for o in order_space if o is not None
+            self.explain_battle_order(battle, o, pos) for o in order_space if o is not None
         ]
         prompt = self.explain_battle(
             battle, self.__teampreview_draft, action_names, last_order, pos
@@ -120,66 +120,6 @@ class LLMPlayer(Player):
             print(f"INVALID RESPONSE (teampreview): {response}", flush=True)
             mon = random.choice(remaining_pokemon)
         return mon
-
-    @staticmethod
-    def readable_battle_order(battle: DoubleBattle, order: BattleOrder, pos: int) -> str:
-        order_str = str(order).removeprefix("/choose ")
-        if order_str.endswith(" 1"):
-            target = (
-                battle.opponent_active_pokemon[0].base_species
-                if battle.opponent_active_pokemon[0] is not None
-                else "empty slot"
-            )
-            order_str = f"{order_str[:-2]} targeting foe's {target}"
-        elif order_str.endswith(" 2"):
-            target = (
-                battle.opponent_active_pokemon[1].base_species
-                if battle.opponent_active_pokemon[1] is not None
-                else "empty slot"
-            )
-            order_str = f"{order_str[:-2]} targeting foe's {target}"
-        elif order_str.endswith(" -1"):
-            target = (
-                battle.active_pokemon[0].base_species
-                if battle.active_pokemon[0] is not None
-                else "empty slot"
-            )
-            order_str = f"{order_str[:-3]} targeting your {target}"
-        elif order_str.endswith(" -2"):
-            target = (
-                battle.active_pokemon[1].base_species
-                if battle.active_pokemon[1] is not None
-                else "empty slot"
-            )
-            order_str = f"{order_str[:-3]} targeting your {target}"
-        if "terastallize" in order_str:
-            active_mon = battle.active_pokemon[pos]
-            assert active_mon is not None
-            order_str = order_str.replace(
-                "terastallize", f"activating {active_mon.tera_type} tera type"
-            )
-        return order_str
-
-    @staticmethod
-    def readable_remaining_pokemon(remaining_pokemon: list[Pokemon]) -> str:
-        remain_str = f"1. {LLMPlayer.explain_inactive_pokemon(remaining_pokemon[0])}"
-        remain_str += f"\n\n2. {LLMPlayer.explain_inactive_pokemon(remaining_pokemon[1])}"
-        remain_str += f"\n\n3. {LLMPlayer.explain_inactive_pokemon(remaining_pokemon[2])}"
-        if len(remaining_pokemon) > 3:
-            remain_str += f"\n\n4. {LLMPlayer.explain_inactive_pokemon(remaining_pokemon[3])}"
-        if len(remaining_pokemon) > 4:
-            remain_str += f"\n\n5. {LLMPlayer.explain_inactive_pokemon(remaining_pokemon[4])}"
-        if len(remaining_pokemon) > 5:
-            remain_str += f"\n\n6. {LLMPlayer.explain_inactive_pokemon(remaining_pokemon[5])}"
-        return remain_str
-
-    @staticmethod
-    def readable_boost(boost: int) -> float:
-        if boost >= 0:
-            modifier = (2 + boost) / 2
-        else:
-            modifier = 2 / (2 - boost)
-        return round(modifier, ndigits=2)
 
     @staticmethod
     def explain_battle(
@@ -296,7 +236,7 @@ Respond with the number corresponding to your chosen action. PLEASE GIVE NO FURT
 
 ### Remaining Pokemon ###
 
-{LLMPlayer.readable_remaining_pokemon(remaining_pokemon)}
+{LLMPlayer.explain_remaining_pokemon(remaining_pokemon)}
 
 ########## OPPONENT SIDE ##########
 
@@ -316,7 +256,75 @@ Respond with the number corresponding to your chosen action. PLEASE GIVE NO FURT
 
 Please select a Pokemon from the "Remaining Pokemon" section to be put in position {len(actives) + 1 if len(actives) < 2 else len(bench) + 1} of your "{"Active" if len(actives) < 2 else "Benched"} Pokemon" section.
 
+Your available options are:
+{LLMPlayer.explain_remaining_pokemon_short(remaining_pokemon)}
+
 Respond with the number corresponding to your chosen Pokemon from the "Remaining Pokemon" list. PLEASE GIVE NO FURTHER RESPONSE THAN THAT, JUST THE NUMBER WITH NO PUNCTUATION!"""
+
+    @staticmethod
+    def explain_battle_order(battle: DoubleBattle, order: BattleOrder, pos: int) -> str:
+        order_str = str(order).removeprefix("/choose ")
+        if order_str.endswith(" 1"):
+            target = (
+                battle.opponent_active_pokemon[0].base_species
+                if battle.opponent_active_pokemon[0] is not None
+                else "empty slot"
+            )
+            order_str = f"{order_str[:-2]} targeting foe's {target}"
+        elif order_str.endswith(" 2"):
+            target = (
+                battle.opponent_active_pokemon[1].base_species
+                if battle.opponent_active_pokemon[1] is not None
+                else "empty slot"
+            )
+            order_str = f"{order_str[:-2]} targeting foe's {target}"
+        elif order_str.endswith(" -1"):
+            target = (
+                battle.active_pokemon[0].base_species
+                if battle.active_pokemon[0] is not None
+                else "empty slot"
+            )
+            order_str = f"{order_str[:-3]} targeting your {target}"
+        elif order_str.endswith(" -2"):
+            target = (
+                battle.active_pokemon[1].base_species
+                if battle.active_pokemon[1] is not None
+                else "empty slot"
+            )
+            order_str = f"{order_str[:-3]} targeting your {target}"
+        if "terastallize" in order_str:
+            active_mon = battle.active_pokemon[pos]
+            assert active_mon is not None
+            order_str = order_str.replace(
+                "terastallize", f"activating {active_mon.tera_type} tera type"
+            )
+        return order_str
+
+    @staticmethod
+    def explain_remaining_pokemon(remaining_pokemon: list[Pokemon]) -> str:
+        remain_str = f"1. {LLMPlayer.explain_inactive_pokemon(remaining_pokemon[0])}"
+        remain_str += f"\n\n2. {LLMPlayer.explain_inactive_pokemon(remaining_pokemon[1])}"
+        remain_str += f"\n\n3. {LLMPlayer.explain_inactive_pokemon(remaining_pokemon[2])}"
+        if len(remaining_pokemon) > 3:
+            remain_str += f"\n\n4. {LLMPlayer.explain_inactive_pokemon(remaining_pokemon[3])}"
+        if len(remaining_pokemon) > 4:
+            remain_str += f"\n\n5. {LLMPlayer.explain_inactive_pokemon(remaining_pokemon[4])}"
+        if len(remaining_pokemon) > 5:
+            remain_str += f"\n\n6. {LLMPlayer.explain_inactive_pokemon(remaining_pokemon[5])}"
+        return remain_str
+
+    @staticmethod
+    def explain_remaining_pokemon_short(remaining_pokemon: list[Pokemon]) -> str:
+        remain_str = f"1. {remaining_pokemon[0].base_species}"
+        remain_str += f"\n2. {remaining_pokemon[1].base_species}"
+        remain_str += f"\n3. {remaining_pokemon[2].base_species}"
+        if len(remaining_pokemon) > 3:
+            remain_str += f"\n4. {remaining_pokemon[3].base_species}"
+        if len(remaining_pokemon) > 4:
+            remain_str += f"\n5. {remaining_pokemon[4].base_species}"
+        if len(remaining_pokemon) > 5:
+            remain_str += f"\n6. {remaining_pokemon[5].base_species}"
+        return remain_str
 
     @staticmethod
     def explain_pokemon(pokemon: Pokemon) -> str:
@@ -368,22 +376,30 @@ Base stats:
     def explain_boosts(boosts: dict[str, int]) -> str:
         boost_str = "Stat Modifiers:"
         if boosts["atk"] != 0:
-            boost_str += f"\n    Attack: x{LLMPlayer.readable_boost(boosts['atk'])}"
+            boost_str += f"\n    Attack: x{LLMPlayer.explain_boost(boosts['atk'])}"
         if boosts["def"] != 0:
-            boost_str += f"\n    Defense: x{LLMPlayer.readable_boost(boosts['def'])}"
+            boost_str += f"\n    Defense: x{LLMPlayer.explain_boost(boosts['def'])}"
         if boosts["spa"] != 0:
-            boost_str += f"\n    Special Attack: x{LLMPlayer.readable_boost(boosts['spa'])}"
+            boost_str += f"\n    Special Attack: x{LLMPlayer.explain_boost(boosts['spa'])}"
         if boosts["spd"] != 0:
-            boost_str += f"\n    Special Defense: x{LLMPlayer.readable_boost(boosts['spd'])}"
+            boost_str += f"\n    Special Defense: x{LLMPlayer.explain_boost(boosts['spd'])}"
         if boosts["spe"] != 0:
-            boost_str += f"\n    Speed: x{LLMPlayer.readable_boost(boosts['spe'])}"
+            boost_str += f"\n    Speed: x{LLMPlayer.explain_boost(boosts['spe'])}"
         if boosts["accuracy"] != 0:
-            boost_str += f"\n    Accuracy: x{LLMPlayer.readable_boost(boosts['accuracy'])}"
+            boost_str += f"\n    Accuracy: x{LLMPlayer.explain_boost(boosts['accuracy'])}"
         if boosts["evasion"] != 0:
-            boost_str += f"\n    Evasion: x{LLMPlayer.readable_boost(boosts['evasion'])}"
+            boost_str += f"\n    Evasion: x{LLMPlayer.explain_boost(boosts['evasion'])}"
         if boost_str == "Stat Modifiers:":
             boost_str += " None"
         return boost_str
+
+    @staticmethod
+    def explain_boost(boost: int) -> float:
+        if boost >= 0:
+            modifier = (2 + boost) / 2
+        else:
+            modifier = 2 / (2 - boost)
+        return round(modifier, ndigits=2)
 
     @staticmethod
     def _get_mask(ally_actions: torch.Tensor) -> torch.Tensor:
