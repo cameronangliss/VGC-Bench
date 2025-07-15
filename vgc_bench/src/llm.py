@@ -25,7 +25,9 @@ class LLMPlayer(Player):
         )
         tokenizer.pad_token = tokenizer.eos_token
         model.config.pad_token_id = tokenizer.eos_token_id
-        self.model = transformers.pipeline("text-generation", model=model, tokenizer=tokenizer)  # type: ignore
+        self.model = transformers.pipelines.pipeline(
+            "text-generation", model=model, tokenizer=tokenizer
+        )
 
     def choose_move(self, battle: AbstractBattle) -> BattleOrder:
         assert isinstance(battle, DoubleBattle)
