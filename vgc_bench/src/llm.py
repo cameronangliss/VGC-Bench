@@ -7,7 +7,7 @@ import transformers
 from poke_env.environment import AbstractBattle, DoubleBattle, Move, Pokemon
 from poke_env.player import BattleOrder, DoublesEnv, Player
 from src.agent import Agent
-from src.utils import doubles_act_len
+from src.utils import ability_descs, doubles_act_len, item_descs, move_descs
 
 
 class LLMPlayer(Player):
@@ -163,8 +163,8 @@ class LLMPlayer(Player):
 
 ########## GLOBAL EFFECTS ##########
 
-Active weather: {list(battle.weather.keys())[0] if battle.weather else "None"}
-Active fields: {", ".join([str(f) for f in battle.fields.keys()]) or "None"}
+Active weather: {", ".join([f"{w} (active for {battle.turn - turn} turns)" for w, turn in battle.weather.items()]) or "None"}
+Active fields: {", ".join([f"{f} (active for {battle.turn - turn} turns)" for f, turn in battle.fields.items()]) or "None"}
 
 ########## YOUR SIDE ##########
 
@@ -224,19 +224,19 @@ Respond with the number corresponding to your chosen action. PLEASE GIVE NO FURT
 
 ########## YOUR SIDE ##########
 
-### Active Pokemon ###
+### Your already-made active choices ###
 
 1. {LLMPlayer.explain_inactive_pokemon(actives[0]) if actives else "empty"}
 
 2. {LLMPlayer.explain_inactive_pokemon(actives[1]) if len(actives) > 1 else "empty"}
 
-### Benched Pokemon ###
+### Your already-made bench choices ###
 
 1. {LLMPlayer.explain_inactive_pokemon(bench[0]) if bench else "empty"}
 
 2. {LLMPlayer.explain_inactive_pokemon(bench[1]) if len(bench) > 1 else "empty"}
 
-### Remaining Pokemon ###
+### Your still-unchosen Pokemon ###
 
 {LLMPlayer.explain_remaining_pokemon(remaining_pokemon)}
 
@@ -256,12 +256,12 @@ Respond with the number corresponding to your chosen action. PLEASE GIVE NO FURT
 
 ########## MAKE YOUR DECISION ##########
 
-Please select a Pokemon from the "Remaining Pokemon" section to be put in position {len(actives) + 1 if len(actives) < 2 else len(bench) + 1} of your "{"Active" if len(actives) < 2 else "Benched"} Pokemon" section.
+Please select a Pokemon from the "Your still-unchosen Pokemon" section to be put in position {len(actives) + 1 if len(actives) < 2 else len(bench) + 1} of the "Your already-made {"active" if len(actives) < 2 else "bench"} choices" section.
 
-Your available options are:
+Just to recap, your available responses in the "Your still-unchosen Pokemon" section are:
 {LLMPlayer.explain_remaining_pokemon_short(remaining_pokemon)}
 
-Respond with the number corresponding to your chosen Pokemon from the "Remaining Pokemon" list. PLEASE GIVE NO FURTHER RESPONSE THAN THAT, JUST THE NUMBER WITH NO PUNCTUATION!"""
+Respond with the number corresponding to your choice. PLEASE GIVE NO FURTHER RESPONSE THAN THAT, JUST THE NUMBER WITH NO PUNCTUATION!"""
 
     @staticmethod
     def explain_battle_order(battle: DoubleBattle, order: BattleOrder, pos: int) -> str:
@@ -297,8 +297,9 @@ Respond with the number corresponding to your chosen Pokemon from the "Remaining
         if "terastallize" in order_str:
             active_mon = battle.active_pokemon[pos]
             assert active_mon is not None
+            assert active_mon.tera_type is not None
             order_str = order_str.replace(
-                "terastallize", f"activating {active_mon.tera_type} tera type"
+                "terastallize", f"activating {active_mon.tera_type.name.lower()} tera type"
             )
         return order_str
 
@@ -331,7 +332,7 @@ Respond with the number corresponding to your chosen Pokemon from the "Remaining
     @staticmethod
     def explain_pokemon(pokemon: Pokemon) -> str:
         if pokemon.fainted:
-            return f"{pokemon.base_species} (fainted)"
+            return f"{pokemon.base_species} | fainted"
         elif not pokemon.active:
             return LLMPlayer.explain_inactive_pokemon(pokemon)
         else:
@@ -339,23 +340,27 @@ Respond with the number corresponding to your chosen Pokemon from the "Remaining
                 LLMPlayer.explain_inactive_pokemon(pokemon)
                 + f"""
 {LLMPlayer.explain_boosts(pokemon.boosts)}
-Effects: {", ".join([str(e) for e in pokemon.effects]) or "None"}"""
+Effects: {", ".join([f"{e.name.lower()} (active for {counter} turns)" for e, counter in pokemon.effects.items()]) or "None"}
+Is in first active turn (effects moves like fake out): {pokemon.first_turn}
+Number of turns user has protected in a row: {pokemon.protect_counter}"""
             )
 
     @staticmethod
     def explain_inactive_pokemon(pokemon: Pokemon) -> str:
         moves = list(pokemon.moves.values())
-        reveal_str = "revealed" if pokemon.revealed else "unrevealed"
-        type_str = "/".join([str(t) for t in pokemon.types])
+        reveal_str = "revealed in battle" if pokemon.revealed else "unrevealed in battle"
+        type_str = "/".join([t.name.lower() for t in pokemon.types])
         tera_type_str = (
-            f"terastallized to {pokemon.tera_type}-type"
-            if pokemon.is_terastallized
-            else f"and unused tera-type of {pokemon.tera_type}"
+            str(pokemon.tera_type.name.lower()) if pokemon.tera_type is not None else "None"
         )
+        if pokemon.tera_type is not None and not pokemon.is_terastallized:
+            tera_type_str += f" (unused)"
         hp_str = f"{round(100 * pokemon.current_hp_fraction)}%" if pokemon.max_hp > 0 else "unknown"
         if pokemon.fainted:
-            return f"{pokemon.base_species} (fainted)"
-        return f"""{pokemon.base_species} ({reveal_str} in battle), a {type_str}-type pokemon ({tera_type_str}) with {hp_str} HP, ability {pokemon.ability}, and held item {pokemon.item or "None"}.
+            return f"{pokemon.base_species} | fainted"
+        return f"""{pokemon.base_species} | HP: {hp_str} | type: {type_str} | tera-type: {tera_type_str} | {reveal_str}
+Ability: {pokemon.ability} | desc: {ability_descs[pokemon.ability if pokemon.ability is not None else "null"]}
+Item: {pokemon.item} | desc: {item_descs[pokemon.item if pokemon.item is not None else "null"]}
 Status Effect: {pokemon.status}
 Moves:
     - {LLMPlayer.explain_move(moves[0]) if len(moves) > 0 else "None"}
@@ -372,7 +377,7 @@ Base stats:
 
     @staticmethod
     def explain_move(move: Move) -> str:
-        return f"{move.id}, a {move.type}-type move with {move.base_power} power, {int(100 * move.accuracy)}% accuracy, and {move.current_pp}/{move.max_pp} pp"
+        return f"{move.id} | pp: {move.current_pp}/{move.max_pp} | type: {move.type} | power: {move.base_power} | acc: {int(100 * move.accuracy)}% | category: {move.category.name.lower()} | desc: {move_descs[move.id]}"
 
     @staticmethod
     def explain_boosts(boosts: dict[str, int]) -> str:

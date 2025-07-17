@@ -70,14 +70,11 @@ doubles_chunk_obs_len = doubles_glob_obs_len + side_obs_len + pokemon_obs_len
 
 # pokemon data
 with open("data/abilities.json") as f:
-    ability_descs: dict[str, npt.NDArray[np.float32]] = json.load(f)
+    ability_descs: dict[str, str] = json.load(f)
     abilities = list(ability_descs.keys())
-    ability_embeds = list(ability_descs.values())
 with open("data/items.json") as f:
-    item_descs: dict[str, npt.NDArray[np.float32]] = json.load(f)
+    item_descs: dict[str, str] = json.load(f)
     items = list(item_descs.keys())
-    item_embeds = list(item_descs.values())
 with open("data/moves.json") as f:
-    move_descs: dict[str, npt.NDArray[np.float32]] = json.load(f)
+    move_descs: dict[str, str] = json.load(f)
     moves = list(move_descs.keys())
-    move_embeds = list(move_descs.values())

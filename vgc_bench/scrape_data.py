@@ -18,14 +18,9 @@ def update_desc_embeddings(url: str, file: str, extras: dict[str, dict[str, str]
         js_literal = js_text[i:-1]
         json_text = re.sub(r"([{,])([a-zA-Z0-9_]+)(:)", r'\1"\2"\3', js_literal)
         file += "on"
-    dex = {k: v for k, v in {**extras, **json.loads(json_text)}.items() if "desc" in v}
-    warnings.simplefilter(action="ignore", category=FutureWarning)
-    transformer = SentenceTransformer("paraphrase-mpnet-base-v2")
-    embeddings = transformer.encode([a["desc"] for a in dex.values()])
-    pca = PCA(100)
-    reduced_embeddings = pca.fit_transform(embeddings).tolist()  # type: ignore
+    dex = {k: v["desc"] for k, v in {**extras, **json.loads(json_text)}.items() if "desc" in v}
     with open(f"data/{file}", "w") as f:
-        json.dump(dict(zip(dex.keys(), reduced_embeddings)), f)
+        json.dump(dex, f)
 
 
 if __name__ == "__main__":
