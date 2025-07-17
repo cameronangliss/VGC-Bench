@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import transformers
 from poke_env.environment import AbstractBattle, DoubleBattle, Move, Pokemon
-from poke_env.player import BattleOrder, DoublesEnv, Player
+from poke_env.player import BattleOrder, DefaultBattleOrder, DoublesEnv, Player
 from src.agent import Agent
 from src.utils import ability_descs, doubles_act_len, item_descs, move_descs
 
@@ -32,8 +32,9 @@ class LLMPlayer(Player):
     def choose_move(self, battle: AbstractBattle) -> BattleOrder:
         assert isinstance(battle, DoubleBattle)
         action1 = self.choose_move_individual(battle, 0, None)
-        prev_action = action1 if action1 >= 0 else None
-        action2 = self.choose_move_individual(battle, 1, prev_action)
+        if action1 < 0:
+            return DefaultBattleOrder()
+        action2 = self.choose_move_individual(battle, 1, action1)
         action = np.array([action1, action2])
         order = DoublesEnv.action_to_order(action, battle)
         return order
