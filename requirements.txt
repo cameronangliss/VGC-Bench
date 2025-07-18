@@ -9,3 +9,4 @@ supersuit==3.9.3
 tensorboard
 torch
 torch-tb-profiler
+transformers
