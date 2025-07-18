@@ -4,8 +4,9 @@ from typing import Any
 import numpy as np
 import torch
 import transformers
-from poke_env.environment import AbstractBattle, DoubleBattle, Move, Pokemon
-from poke_env.player import BattleOrder, DefaultBattleOrder, DoublesEnv, Player
+from poke_env.battle import AbstractBattle, DoubleBattle, Move, Pokemon
+from poke_env.environment import DoublesEnv
+from poke_env.player import BattleOrder, DefaultBattleOrder, Player
 from src.agent import Agent
 from src.utils import ability_descs, doubles_act_len, item_descs, move_descs
 
@@ -169,7 +170,7 @@ Active fields: {", ".join([f"{f} (active for {battle.turn - turn} turns)" for f,
 
 ########## YOUR SIDE ##########
 
-{"Tera available." if any([c is not False for c in battle.can_tera]) else "Tera used."}
+{"Tera used." if battle.used_tera else "Tera available."}
 Active side conditions: {", ".join([str(s) for s in battle.side_conditions.keys()]) or None}
 
 ### Active Pokemon ###
@@ -187,7 +188,7 @@ Slot 2: {LLMPlayer.explain_pokemon(a2) if a2 is not None else "empty"}
 ########## OPPONENT SIDE ##########
 
 Rating: {battle.opponent_rating}
-{"Tera available for opponent!" if battle._opponent_can_terrastallize else "Opponent's tera already used."}
+{"Opponent's tera already used." if battle.opponent_used_tera else "Tera available for opponent!"}
 Active side conditions: {", ".join([str(s) for s in battle.opponent_side_conditions.keys()]) or "None"}
 
 ### Active Pokemon ###
