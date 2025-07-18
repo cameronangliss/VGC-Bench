@@ -8,7 +8,7 @@ from poke_env.battle import AbstractBattle, DoubleBattle, Move, Pokemon
 from poke_env.environment import DoublesEnv
 from poke_env.player import BattleOrder, DefaultBattleOrder, Player
 from src.agent import Agent
-from src.utils import ability_descs, doubles_act_len, item_descs, move_descs
+from src.utils import doubles_act_len
 
 
 class LLMPlayer(Player):
@@ -361,8 +361,8 @@ Number of turns user has protected in a row: {pokemon.protect_counter}"""
         if pokemon.fainted:
             return f"{pokemon.base_species} | fainted"
         return f"""{pokemon.base_species} | HP: {hp_str} | type: {type_str} | tera-type: {tera_type_str} | {reveal_str}
-Ability: {pokemon.ability} | desc: {ability_descs[pokemon.ability if pokemon.ability is not None else "null"]}
-Item: {pokemon.item} | desc: {item_descs[pokemon.item if pokemon.item is not None else "null"]}
+Ability: {pokemon.ability}
+Item: {pokemon.item}
 Status Effect: {pokemon.status}
 Moves:
     - {LLMPlayer.explain_move(moves[0]) if len(moves) > 0 else "None"}
@@ -379,7 +379,7 @@ Base stats:
 
     @staticmethod
     def explain_move(move: Move) -> str:
-        return f"{move.id} | pp: {move.current_pp}/{move.max_pp} | type: {move.type} | power: {move.base_power} | acc: {int(100 * move.accuracy)}% | category: {move.category.name.lower()} | desc: {move_descs[move.id]}"
+        return f"{move.id} | pp: {move.current_pp}/{move.max_pp} | type: {move.type} | power: {move.base_power} | acc: {int(100 * move.accuracy)}% | category: {move.category.name.lower()}"
 
     @staticmethod
     def explain_boosts(boosts: dict[str, int]) -> str:
