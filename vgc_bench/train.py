@@ -20,8 +20,8 @@ from src.utils import (
     battle_format,
     chooses_on_teampreview,
     compare,
-    doubles_act_len,
-    doubles_chunk_obs_len,
+    act_len,
+    chunk_obs_len,
     moves,
 )
 
@@ -65,9 +65,9 @@ def train(
         rl_module_spec=RLModuleSpec(
             module_class=ActorCriticModule,
             observation_space=Box(
-                -1, len(moves), shape=(12 * doubles_chunk_obs_len,), dtype=np.float32
+                -1, len(moves), shape=(12 * chunk_obs_len,), dtype=np.float32
             ),
-            action_space=MultiDiscrete([doubles_act_len, doubles_act_len]),
+            action_space=MultiDiscrete([act_len, act_len]),
             model_config={
                 "num_frames": num_frames,
                 "chooses_on_teampreview": chooses_on_teampreview,
@@ -159,9 +159,9 @@ def train(
             RLModuleSpec(
                 module_class=ActorCriticModule,
                 observation_space=Box(
-                    -1, len(moves), shape=(12 * doubles_chunk_obs_len,), dtype=np.float32
+                    -1, len(moves), shape=(12 * chunk_obs_len,), dtype=np.float32
                 ),
-                action_space=MultiDiscrete([doubles_act_len, doubles_act_len]),
+                action_space=MultiDiscrete([act_len, act_len]),
                 model_config={
                     "num_frames": num_frames,
                     "chooses_on_teampreview": chooses_on_teampreview,

@@ -6,7 +6,6 @@ import numpy.typing as npt
 import torch
 from poke_env.battle import (
     AbstractBattle,
-    Battle,
     DoubleBattle,
     Effect,
     Field,
@@ -23,18 +22,9 @@ from poke_env.battle import (
 from poke_env.environment import DoublesEnv
 from poke_env.environment.env import _EnvPlayer
 from poke_env.player import BattleOrder, DefaultBattleOrder, Player
+from src.utils import abilities, act_len, chunk_obs_len, items, move_obs_len, moves, pokemon_obs_len
 from ray.rllib.core import Columns
 from src.policy import ActorCriticModule
-from src.utils import (
-    abilities,
-    doubles_act_len,
-    doubles_chunk_obs_len,
-    items,
-    move_obs_len,
-    moves,
-    pokemon_obs_len,
-    singles_act_len,
-)
 
 
 class Agent(Player):
@@ -60,12 +50,12 @@ class Agent(Player):
             return DefaultBattleOrder()
         if battle.teampreview and len(self._teampreview_draft) == 4:
             self._teampreview_draft = []
-        obs = self.embed_battle(battle, self._teampreview_draft, fake_ratings=True)
+        obs = self.embed_battle(battle, self._teampreview_draft, fake_rating=True)
         if battle.turn == 0 and not (
             battle.teampreview and len([p for p in battle.team.values() if p.active]) > 0
         ):
             for _ in range(self.frames.maxlen):
-                self.frames.append(np.zeros([12, doubles_chunk_obs_len], dtype=np.float32))
+                self.frames.append(np.zeros([12 * chunk_obs_len], dtype=np.float32))
         if self.frames.maxlen > 1:
             self.frames.append(obs)
             obs = np.stack(self.frames)
@@ -83,38 +73,35 @@ class Agent(Player):
         return DoublesEnv.action_to_order(action, battle)
 
     def teampreview(self, battle: AbstractBattle) -> str:
-        if isinstance(battle, Battle):
-            return self.random_teampreview(battle)
-        elif isinstance(battle, DoubleBattle):
-            order1 = self.choose_move(battle)
-            upd_battle = _EnvPlayer._simulate_teampreview_switchin(order1, battle)
-            order2 = self.choose_move(upd_battle)
-            action1 = DoublesEnv.order_to_action(order1, battle)
-            action2 = DoublesEnv.order_to_action(order2, upd_battle)
-            if self.__policy.model.chooses_on_teampreview:  # type: ignore
-                return f"/team {action1[0]}{action1[1]}{action2[0]}{action2[1]}"
-            else:
-                message = self.random_teampreview(battle)
-                self._teampreview_draft = [int(i) - 1 for i in message[6:-2]]
-                return message
+        assert isinstance(battle, DoubleBattle)
+        order1 = self.choose_move(battle)
+        upd_battle = _EnvPlayer._simulate_teampreview_switchin(order1, battle)
+        order2 = self.choose_move(upd_battle)
+        action1 = DoublesEnv.order_to_action(order1, battle)
+        action2 = DoublesEnv.order_to_action(order2, upd_battle)
+        if self.__policy.model.chooses_on_teampreview:  # type: ignore
+            return f"/team {action1[0]}{action1[1]}{action2[0]}{action2[1]}"
         else:
-            raise TypeError()
+            message = self.random_teampreview(battle)
+            self._teampreview_draft = [int(i) - 1 for i in message[6:-2]]
+            return message
 
     @staticmethod
     def embed_battle(
-        battle: AbstractBattle, teampreview_draft: list[int], fake_ratings: bool = False
+        battle: AbstractBattle, teampreview_draft: list[int], fake_rating: bool = False
     ) -> npt.NDArray[np.float32]:
+        assert isinstance(battle, DoubleBattle)
+        if not battle._last_request:
+            mask = np.ones(2 * act_len, dtype=np.float32)
+        else:
+            mask1 = Agent.get_action_mask(battle, 0)
+            mask2 = Agent.get_action_mask(battle, 1)
+            mask = np.array(mask1 + mask2)
         glob = Agent.embed_global(battle)
-        side = Agent.embed_side(battle, fake_ratings)
-        opp_side = Agent.embed_side(battle, fake_ratings, opp=True)
-        [a1, a2, *_] = (
-            [battle.active_pokemon] if isinstance(battle, Battle) else battle.active_pokemon
-        )
-        [o1, o2, *_] = (
-            [battle.opponent_active_pokemon]
-            if isinstance(battle, Battle)
-            else battle.opponent_active_pokemon
-        )
+        side = Agent.embed_side(battle, fake_rating)
+        opp_side = Agent.embed_side(battle, False, opp=True)
+        [a1, a2, *_] = battle.active_pokemon
+        [o1, o2, *_] = battle.opponent_active_pokemon
         assert battle.teampreview == (len(teampreview_draft) < 4)
         assert all([0 <= i < 6 for i in teampreview_draft])
         pokemons = [
@@ -141,32 +128,14 @@ class Agent(Player):
         ]
         opp_pokemons += [np.zeros(pokemon_obs_len, dtype=np.float32)] * (6 - len(opp_pokemons))
         return np.concatenate(
-            [np.concatenate([glob, side, p]) for p in pokemons]
+            [mask]
+            + [np.concatenate([glob, side, p]) for p in pokemons]
             + [np.concatenate([glob, opp_side, p]) for p in opp_pokemons],
             dtype=np.float32,
         )
 
     @staticmethod
-    def embed_global(battle: AbstractBattle) -> npt.NDArray[np.float32]:
-        if isinstance(battle, Battle):
-            if not battle._last_request:
-                mask = np.zeros(singles_act_len, dtype=np.float32)
-            else:
-                action_space = Agent.get_action_space(battle)
-                mask = [float(i not in action_space) for i in range(singles_act_len)]
-            force_switch = [float(battle.force_switch), 0]
-        elif isinstance(battle, DoubleBattle):
-            if not battle._last_request:
-                mask = np.zeros(2 * doubles_act_len, dtype=np.float32)
-            else:
-                action_space1 = Agent.get_action_space(battle, 0)
-                mask1 = [float(i not in action_space1) for i in range(doubles_act_len)]
-                action_space2 = Agent.get_action_space(battle, 1)
-                mask2 = [float(i not in action_space2) for i in range(doubles_act_len)]
-                mask = mask1 + mask2
-            force_switch = [float(f) for f in battle.force_switch]
-        else:
-            raise TypeError()
+    def embed_global(battle: DoubleBattle) -> npt.NDArray[np.float32]:
         weather = [
             (min(battle.turn - battle.weather[w], 8) / 8 if w in battle.weather else 0)
             for w in Weather
@@ -175,13 +144,18 @@ class Agent(Player):
             min(battle.turn - battle.fields[f], 8) / 8 if f in battle.fields else 0 for f in Field
         ]
         teampreview = float(battle.teampreview)
-        return np.array([*mask, *weather, *fields, teampreview, *force_switch], dtype=np.float32)
+        return np.array([*weather, *fields, teampreview], dtype=np.float32)
 
     @staticmethod
     def embed_side(
-        battle: AbstractBattle, fake_ratings: bool, opp: bool = False
+        battle: DoubleBattle, fake_rating: bool, opp: bool = False
     ) -> npt.NDArray[np.float32]:
-        gims = [battle.used_mega_evolve, battle.used_z_move, battle.used_dynamax, battle.used_tera]
+        gims = [
+            battle.can_mega_evolve[0],
+            battle.can_z_move[0],
+            battle.can_dynamax[0],
+            battle.can_tera[0],
+        ]
         opp_gims = [
             battle.opponent_used_mega_evolve,
             battle.opponent_used_z_move,
@@ -211,8 +185,9 @@ class Agent(Player):
         ]
         gims = opp_gims if opp else gims
         gimmicks = [float(g) for g in gims]
-        rat = battle.opponent_rating if opp else battle.rating
-        rating = 1 if fake_ratings else (rat or 0) / 2000
+        player = battle.opponent_role if opp else battle.player_role
+        rat = [p for p in battle._players if p["player"] == player][0].get("rating", "0")
+        rating = 1 if fake_rating else int(rat or "0") / 2000
         return np.array([*side_conditions, *gimmicks, rating], dtype=np.float32)
 
     @staticmethod
@@ -299,6 +274,7 @@ class Agent(Player):
         self_switch = float(move.self_switch is not False)
         pp = move.max_pp / 64
         pp_frac = move.current_pp / move.max_pp
+        is_last_used = float(move.is_last_used)
         move_type = [float(t == move.type) for t in PokemonType]
         return np.array(
             [
@@ -315,83 +291,41 @@ class Agent(Player):
                 self_switch,
                 pp,
                 pp_frac,
+                is_last_used,
                 *move_type,
             ]
         )
 
     @staticmethod
-    def get_action_space(battle: AbstractBattle, pos: int | None = None) -> npt.NDArray[np.int64]:
-        if isinstance(battle, Battle):
-            switch_space = [
-                i
-                for i, pokemon in enumerate(battle.team.values())
-                if not battle.trapped
-                and pokemon.species in [p.species for p in battle.available_switches]
-            ]
-            if battle.active_pokemon is None:
-                return np.array(switch_space)
-            else:
-                move_space = [
-                    i + 6
-                    for i, move in enumerate(battle.active_pokemon.moves.values())
-                    if move.id in [m.id for m in battle.available_moves]
-                ]
-                mega_space = [i + 4 for i in move_space if battle.can_mega_evolve]
-                zmove_space = [
-                    i + 8
-                    for i, move in enumerate(battle.active_pokemon.moves.values())
-                    if move.id in [m.id for m in battle.active_pokemon.available_z_moves]
-                    and battle.can_z_move
-                ]
-                dynamax_space = [i + 12 for i in move_space if battle.can_dynamax]
-                tera_space = [i + 16 for i in move_space if battle.can_tera]
-                return np.array(
-                    switch_space
-                    + move_space
-                    + mega_space
-                    + zmove_space
-                    + dynamax_space
-                    + tera_space
-                )
-        elif isinstance(battle, DoubleBattle):
-            assert pos is not None
-            switch_space = [
-                i + 1
-                for i, pokemon in enumerate(battle.team.values())
-                if battle.force_switch != [[False, True], [True, False]][pos]
-                and not battle.trapped[pos]
-                and not (
-                    len(battle.available_switches[0]) == 1
-                    and battle.force_switch == [True, True]
-                    and pos == 1
-                )
-                and not pokemon.active
-                and pokemon.species in [p.species for p in battle.available_switches[pos]]
-            ]
-            active_mon = battle.active_pokemon[pos]
-            if battle.teampreview:
-                return np.array(switch_space)
-            elif battle.finished or battle._wait:
-                return np.array([0])
-            elif active_mon is None:
-                return np.array(switch_space or [0])
-            else:
-                move_spaces = [
-                    [
-                        7 + 5 * i + j + 2
-                        for j in battle.get_possible_showdown_targets(move, active_mon)
-                    ]
-                    for i, move in enumerate(active_mon.moves.values())
-                    if move.id in [m.id for m in battle.available_moves[pos]]
-                ]
-                move_space = [i for s in move_spaces for i in s]
-                tera_space = [i + 80 for i in move_space if battle.can_tera[pos]]
-                if (
-                    not move_space
-                    and len(battle.available_moves[pos]) == 1
-                    and battle.available_moves[pos][0].id in ["struggle", "recharge"]
-                ):
-                    move_space = [9]
-                return np.array((switch_space + move_space + tera_space) or [0])
+    def get_action_mask(battle: DoubleBattle, pos: int) -> list[int]:
+        switch_space = [
+            i + 1
+            for i, pokemon in enumerate(battle.team.values())
+            if not battle.trapped[pos]
+            and pokemon.base_species in [p.base_species for p in battle.available_switches[pos]]
+        ]
+        active_mon = battle.active_pokemon[pos]
+        if battle._wait or (any(battle.force_switch) and not battle.force_switch[pos]):
+            actions = [0]
+        elif all(battle.force_switch) and len(battle.available_switches[0]) == 1:
+            actions = switch_space + [0]
+        elif battle.teampreview or active_mon is None:
+            actions = switch_space
         else:
-            raise TypeError()
+            move_spaces = [
+                [7 + 5 * i + j + 2 for j in battle.get_possible_showdown_targets(move, active_mon)]
+                for i, move in enumerate(active_mon.moves.values())
+                if move.id in [m.id for m in battle.available_moves[pos]]
+            ]
+            move_space = [i for s in move_spaces for i in s]
+            tera_space = [i + 80 for i in move_space if battle.can_tera[pos]]
+            if (
+                not move_space
+                and len(battle.available_moves[pos]) == 1
+                and battle.available_moves[pos][0].id in ["struggle", "recharge"]
+            ):
+                move_space = [9]
+            actions = switch_space + move_space + tera_space
+        actions = actions or [0]
+        action_mask = [int(i in actions) for i in range(act_len)]
+        return action_mask

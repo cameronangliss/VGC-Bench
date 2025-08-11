@@ -3,7 +3,7 @@ import argparse
 import numpy as np
 import torch
 from gymnasium.spaces import Box, MultiDiscrete
-from poke_env.player import MaxBasePowerPlayer
+from poke_env.player import SimpleHeuristicsPlayer
 from poke_env.ps_client import ServerConfiguration
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.core.rl_module import RLModuleSpec
@@ -13,11 +13,10 @@ from src.env import ShowdownEnv
 from src.policy import ActorCriticModule
 from src.teams import RandomTeamBuilder
 from src.utils import (
-    LearningStyle,
     battle_format,
     chooses_on_teampreview,
-    doubles_act_len,
-    doubles_chunk_obs_len,
+    act_len,
+    chunk_obs_len,
     moves,
 )
 
@@ -71,13 +70,12 @@ def pretrain(num_teams: int, port: int, device: str, num_frames: int):
         env_config={
             "teams": [0],
             "port": port,
-            "learning_style": LearningStyle.PURE_SELF_PLAY,
             "num_frames": num_frames,
         },
         observation_space=Box(
-            -1, len(moves), shape=(12 * doubles_chunk_obs_len,), dtype=np.float32
+            -1, len(moves), shape=(12 * chunk_obs_len,), dtype=np.float32
         ),
-        action_space=MultiDiscrete([doubles_act_len, doubles_act_len]),
+        action_space=MultiDiscrete([act_len, act_len]),
         disable_env_checking=True,
     )
     config.evaluation(evaluation_interval=None)
@@ -86,9 +84,9 @@ def pretrain(num_teams: int, port: int, device: str, num_frames: int):
         rl_module_spec=RLModuleSpec(
             module_class=ActorCriticModule,
             observation_space=Box(
-                -1, len(moves), shape=(12 * doubles_chunk_obs_len,), dtype=np.float32
+                -1, len(moves), shape=(12 * chunk_obs_len,), dtype=np.float32
             ),
-            action_space=MultiDiscrete([doubles_act_len, doubles_act_len]),
+            action_space=MultiDiscrete([act_len, act_len]),
             model_config={
                 "num_frames": num_frames,
                 "chooses_on_teampreview": chooses_on_teampreview,
@@ -108,7 +106,7 @@ def pretrain(num_teams: int, port: int, device: str, num_frames: int):
         accept_open_team_sheet=True,
         team=RandomTeamBuilder(list(range(num_teams)), battle_format),
     )
-    eval_opponent = MaxBasePowerPlayer(
+    eval_opponent = SimpleHeuristicsPlayer(
         server_configuration=ServerConfiguration(
             f"ws://localhost:{port}/showdown/websocket",
             "https://play.pokemonshowdown.com/action.php?",

@@ -11,10 +11,11 @@ from src.agent import Agent
 from src.teams import RandomTeamBuilder, TeamToggle
 from src.utils import (
     LearningStyle,
+    act_len,
     allow_mirror_match,
     battle_format,
     chooses_on_teampreview,
-    doubles_chunk_obs_len,
+    chunk_obs_len,
     moves,
 )
 
@@ -29,7 +30,7 @@ class ShowdownEnv(DoublesEnv[npt.NDArray[np.float32]]):
         self.metadata = {"name": "showdown_v1", "render_modes": ["human"]}
         self.render_mode: str | None = None
         self.observation_spaces = {
-            agent: Box(-1, len(moves), shape=(12 * doubles_chunk_obs_len,), dtype=np.float32)
+            agent: Box(-1, len(moves), shape=(2 * act_len + 12 * chunk_obs_len,), dtype=np.float32)
             for agent in self.possible_agents
         }
         self._teampreview_draft1 = []
@@ -84,8 +85,10 @@ class ShowdownEnv(DoublesEnv[npt.NDArray[np.float32]]):
     ) -> tuple[dict[str, npt.NDArray[np.float32]], dict[str, dict[str, Any]]]:
         self._teampreview_draft1 = []
         self._teampreview_draft2 = []
-        result = super().reset(seed=seed, options=options)
-        return result
+        return super().reset(seed=seed, options=options)
+
+    def close(self, force: bool = True, wait: bool = False):
+        super().close(force=force, wait=wait)
 
     def calc_reward(self, battle: AbstractBattle) -> float:
         if not battle.finished:
@@ -101,10 +104,4 @@ class ShowdownEnv(DoublesEnv[npt.NDArray[np.float32]]):
         teampreview_draft = (
             self._teampreview_draft1 if battle.player_role == "p1" else self._teampreview_draft2
         )
-        return Agent.embed_battle(battle, teampreview_draft, fake_ratings=True)
-
-    def cleanup(self):
-        dead_tags = [k for k, b in self.agent1.battles.items() if b.finished]
-        for tag in dead_tags:
-            self.agent1._battles.pop(tag)
-            self.agent2._battles.pop(tag)
+        return Agent.embed_battle(battle, teampreview_draft, fake_rating=True)
