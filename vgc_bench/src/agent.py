@@ -22,9 +22,9 @@ from poke_env.battle import (
 from poke_env.environment import DoublesEnv
 from poke_env.environment.env import _EnvPlayer
 from poke_env.player import BattleOrder, DefaultBattleOrder, Player
-from src.utils import abilities, act_len, chunk_obs_len, items, move_obs_len, moves, pokemon_obs_len
 from ray.rllib.core import Columns
 from src.policy import ActorCriticModule
+from src.utils import abilities, act_len, chunk_obs_len, items, move_obs_len, moves, pokemon_obs_len
 
 
 class Agent(Player):

@@ -98,7 +98,8 @@ class TwoStepTorchMultiCategorical(TorchMultiCategorical):
         mask = torch.where(logits == float("-inf"), 0, 1)
         actions1 = self._cats[0].sample().unsqueeze(1)  # type: ignore
         mask = self._update_mask(mask, actions1)
-        dist = TorchCategorical(logits=self._cats[1].logits + mask)
+        mask = torch.where(mask.bool(), 0, float("-inf"))
+        dist = TorchCategorical(logits=self._cats[1].logits + mask[:, act_len:])
         actions2 = dist.sample().unsqueeze(1)  # type: ignore
         actions = torch.cat([actions1, actions2], dim=1)
         return actions
@@ -107,7 +108,8 @@ class TwoStepTorchMultiCategorical(TorchMultiCategorical):
         logits = torch.cat([self._cats[0].logits, self._cats[1].logits], dim=1)
         mask = torch.where(logits == float("-inf"), 0, 1)
         mask = self._update_mask(mask, value[:, :1])
-        dist2 = TorchCategorical(logits=self._cats[1].logits + mask)
+        mask = torch.where(mask.bool(), 0, float("-inf"))
+        dist2 = TorchCategorical(logits=self._cats[1].logits + mask[:, act_len:])
         altered_dist = TorchMultiCategorical([self._cats[0], dist2])
         return altered_dist.logp(value)
 

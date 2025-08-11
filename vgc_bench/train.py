@@ -16,12 +16,12 @@ from src.policy import ActorCriticModule
 from src.teams import RandomTeamBuilder, TeamToggle
 from src.utils import (
     LearningStyle,
+    act_len,
     allow_mirror_match,
     battle_format,
     chooses_on_teampreview,
-    compare,
-    act_len,
     chunk_obs_len,
+    compare,
     moves,
 )
 
@@ -49,14 +49,10 @@ def train(
     config = PPOConfig()
     config = config.environment(
         "showdown",
-        env_config={
-            "teams": teams,
-            "port": port,
-            "num_frames": num_frames,
-        },
+        env_config={"teams": teams, "port": port, "num_frames": num_frames},
         disable_env_checking=True,
     )
-    config = config.env_runners(num_env_runners=24)
+    config = config.env_runners(num_env_runners=2)
     config = config.learners(num_learners=1, num_gpus_per_learner=1, local_gpu_idx=int(device[-1]))
     config = config.multi_agent(
         policies={"p1"}, policy_mapping_fn=lambda agent_id, ep_type: "p1", policies_to_train=["p1"]
@@ -64,9 +60,7 @@ def train(
     config = config.rl_module(
         rl_module_spec=RLModuleSpec(
             module_class=ActorCriticModule,
-            observation_space=Box(
-                -1, len(moves), shape=(12 * chunk_obs_len,), dtype=np.float32
-            ),
+            observation_space=Box(-1, len(moves), shape=(12 * chunk_obs_len,), dtype=np.float32),
             action_space=MultiDiscrete([act_len, act_len]),
             model_config={
                 "num_frames": num_frames,

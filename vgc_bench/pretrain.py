@@ -12,13 +12,7 @@ from src.agent import Agent
 from src.env import ShowdownEnv
 from src.policy import ActorCriticModule
 from src.teams import RandomTeamBuilder
-from src.utils import (
-    battle_format,
-    chooses_on_teampreview,
-    act_len,
-    chunk_obs_len,
-    moves,
-)
+from src.utils import act_len, battle_format, chooses_on_teampreview, chunk_obs_len, moves
 
 # class TrajectoryDataset(Dataset):
 #     def __init__(self, num_frames: int):
@@ -67,14 +61,8 @@ def pretrain(num_teams: int, port: int, device: str, num_frames: int):
     config = BCConfig()
     config.environment(
         "showdown",
-        env_config={
-            "teams": [0],
-            "port": port,
-            "num_frames": num_frames,
-        },
-        observation_space=Box(
-            -1, len(moves), shape=(12 * chunk_obs_len,), dtype=np.float32
-        ),
+        env_config={"teams": [0], "port": port, "num_frames": num_frames},
+        observation_space=Box(-1, len(moves), shape=(12 * chunk_obs_len,), dtype=np.float32),
         action_space=MultiDiscrete([act_len, act_len]),
         disable_env_checking=True,
     )
@@ -83,9 +71,7 @@ def pretrain(num_teams: int, port: int, device: str, num_frames: int):
     config.rl_module(
         rl_module_spec=RLModuleSpec(
             module_class=ActorCriticModule,
-            observation_space=Box(
-                -1, len(moves), shape=(12 * chunk_obs_len,), dtype=np.float32
-            ),
+            observation_space=Box(-1, len(moves), shape=(12 * chunk_obs_len,), dtype=np.float32),
             action_space=MultiDiscrete([act_len, act_len]),
             model_config={
                 "num_frames": num_frames,
