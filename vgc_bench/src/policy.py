@@ -55,6 +55,7 @@ class NeuralNetwork(nn.Module):
                     norm_first=True,
                 ),
                 num_layers=self.embed_layers,
+                enable_nested_tensor=False,
             )
         self.actor_proj = nn.Linear(self.proj_len, 2 * act_len)
         self.value_proj = nn.Linear(self.proj_len, 1)
