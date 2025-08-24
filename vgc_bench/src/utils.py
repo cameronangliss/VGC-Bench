@@ -65,7 +65,7 @@ chooses_on_teampreview = True
 
 # observation length constants
 act_len = 107
-glob_obs_len = len(Field) + len(Weather) + 1
+glob_obs_len = len(Field) + len(Weather) + 2
 side_obs_len = len(SideCondition) + 5
 move_obs_len = len(MoveCategory) + len(Target) + len(PokemonType) + 12
 pokemon_obs_len = (
@@ -88,7 +88,6 @@ all_formats = [
     "gen9vgc2025reghbo3",
     "gen9vgc2025regi",
     "gen9vgc2025regibo3",
-    "gen9vgc2025regj",
     "gen9vgc2025regjbo3",
 ]
 with open("data/abilities.json") as f:

@@ -47,7 +47,7 @@ from src.utils import act_len, battle_format, chooses_on_teampreview, chunk_obs_
 #         return Trajectory(obs=stacked_obs, acts=traj.acts, infos=None, terminal=True)
 
 
-def pretrain(num_teams: int, port: int, device: str, num_frames: int):
+def pretrain(run_id: int, num_teams: int, port: int, device: str, num_frames: int):
     register_env("showdown", ShowdownEnv.create_env)
     # dataset = TrajectoryDataset(num_frames)
     # div_count = 10
@@ -117,6 +117,7 @@ def pretrain(num_teams: int, port: int, device: str, num_frames: int):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Pretrain a Pokémon AI model")
+    parser.add_argument("--run_id", type=int, required=True, help="Run ID for the training session")
     parser.add_argument("--num_teams", type=int, default=1, help="Number of teams to train with")
     parser.add_argument("--port", type=int, default=8000, help="Port to run showdown server on")
     parser.add_argument(
@@ -133,4 +134,4 @@ if __name__ == "__main__":
         help="number of frames to use for frame stacking. default is 1",
     )
     args = parser.parse_args()
-    pretrain(args.num_teams, args.port, args.device, args.num_frames)
+    pretrain(args.run_id, args.num_teams, args.port, args.device, args.num_frames)

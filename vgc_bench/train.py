@@ -1,10 +1,11 @@
 import argparse
 import os
+import random
 
 import numpy as np
 import torch
 from gymnasium.spaces import Box, MultiDiscrete
-from poke_env.player import MaxBasePowerPlayer
+from poke_env.player import SimpleHeuristicsPlayer
 from poke_env.ps_client import ServerConfiguration
 from ray.rllib.algorithms import PPOConfig
 from ray.rllib.core.rl_module import RLModuleSpec
@@ -13,7 +14,7 @@ from ray.tune.registry import register_env
 from src.agent import Agent
 from src.env import ShowdownEnv
 from src.policy import ActorCriticModule
-from src.teams import RandomTeamBuilder, TeamToggle
+from src.teams import TEAMS, RandomTeamBuilder, TeamToggle
 from src.utils import (
     LearningStyle,
     act_len,
@@ -36,7 +37,8 @@ class FilteredTBXLogger(TBXLogger):
 
 
 def train(
-    teams: list[int],
+    run_id: int,
+    num_teams: int,
     port: int,
     device: str,
     learning_style: LearningStyle,
@@ -49,7 +51,7 @@ def train(
     config = PPOConfig()
     config = config.environment(
         "showdown",
-        env_config={"teams": teams, "port": port, "num_frames": num_frames},
+        env_config={"run_id": run_id, "num_teams": num_teams, "port": port, "num_frames": num_frames},
         disable_env_checking=True,
     )
     config = config.env_runners(num_env_runners=2)
@@ -79,15 +81,17 @@ def train(
             "-xm" if not allow_mirror_match else "",
         ]
     )[1:]
-    log_dir = f"results/logs-{run_ident}/{','.join([str(t) for t in teams])}-teams/"
-    save_dir = f"results/saves-{run_ident}/{','.join([str(t) for t in teams])}-teams"
+    log_dir = f"results{run_id}/logs-{run_ident}/{num_teams}-teams"
+    save_dir = f"results{run_id}/saves-{run_ident}/{num_teams}-teams"
     os.makedirs(save_dir, exist_ok=True)
     algo = config.build_algo(
         logger_creator=lambda config: UnifiedLogger(  # type: ignore
             config, log_dir, loggers=[FilteredTBXLogger]
         )
     )
-    toggle = None if allow_mirror_match else TeamToggle(len(teams))
+    teams = list(range(len(TEAMS[battle_format[-4:]])))
+    random.Random(run_id).shuffle(teams)
+    toggle = None if allow_mirror_match else TeamToggle(num_teams)
     eval_agent1 = Agent(
         num_frames,
         torch.device(device),
@@ -101,10 +105,10 @@ def train(
         accept_open_team_sheet=True,
         open_timeout=None,
         team=RandomTeamBuilder(
-            [0] if learning_style == LearningStyle.EXPLOITER else teams, battle_format, toggle
+            [teams[0]] if learning_style == LearningStyle.EXPLOITER else teams[:num_teams], battle_format, toggle
         ),
     )
-    eval_agent2 = MaxBasePowerPlayer(
+    eval_agent2 = SimpleHeuristicsPlayer(
         server_configuration=ServerConfiguration(
             f"ws://localhost:{port}/showdown/websocket",
             "https://play.pokemonshowdown.com/action.php?",
@@ -115,7 +119,7 @@ def train(
         accept_open_team_sheet=True,
         open_timeout=None,
         team=RandomTeamBuilder(
-            [0] if learning_style == LearningStyle.EXPLOITER else teams, battle_format, toggle
+            [teams[0]] if learning_style == LearningStyle.EXPLOITER else teams[:num_teams], battle_format, toggle
         ),
     )
     num_saved_steps = 0
@@ -181,8 +185,10 @@ def train(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a Pokémon AI model")
-    parser.add_argument("--teams", nargs="+", type=int, help="Indices of teams to train with")
-    parser.add_argument("--num_teams", type=int, help="Number of teams to train with")
+    parser.add_argument("--run_id", type=int, required=True, help="Run ID for the training session")
+    parser.add_argument(
+        "--num_teams", type=int, required=True, help="Number of teams to train with"
+    )
     parser.add_argument("--port", type=int, default=8000, help="Port to run showdown server on")
     parser.add_argument(
         "--device",
@@ -206,9 +212,6 @@ if __name__ == "__main__":
         help="number of frames to use for frame stacking. default is 1",
     )
     args = parser.parse_args()
-    assert (args.teams is None) != (
-        args.num_teams is None
-    ), "Only pass one of --teams and --num_teams in"
     assert (
         int(args.exploiter)
         + int(args.self_play)
@@ -217,7 +220,6 @@ if __name__ == "__main__":
         + int(args.double_oracle)
         == 1
     )
-    teams = args.teams if args.teams is not None else list(range(args.num_teams))
     if args.exploiter:
         style = LearningStyle.EXPLOITER
     elif args.self_play:
@@ -230,4 +232,12 @@ if __name__ == "__main__":
         style = LearningStyle.DOUBLE_ORACLE
     else:
         raise TypeError()
-    train(teams, args.port, args.device, style, args.behavior_clone, args.num_frames)
+    train(
+        args.run_id,
+        args.num_teams,
+        args.port,
+        args.device,
+        style,
+        args.behavior_clone,
+        args.num_frames,
+    )

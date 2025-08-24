@@ -1,3 +1,4 @@
+import random
 from typing import Any
 
 import numpy as np
@@ -8,7 +9,7 @@ from poke_env.environment import DoublesEnv
 from poke_env.ps_client import ServerConfiguration
 from ray.rllib.env import ParallelPettingZooEnv
 from src.agent import Agent
-from src.teams import RandomTeamBuilder, TeamToggle
+from src.teams import TEAMS, RandomTeamBuilder, TeamToggle
 from src.utils import (
     LearningStyle,
     act_len,
@@ -38,7 +39,9 @@ class ShowdownEnv(DoublesEnv[npt.NDArray[np.float32]]):
 
     @classmethod
     def create_env(cls, config: dict[str, Any]) -> ParallelPettingZooEnv:
-        toggle = None if allow_mirror_match else TeamToggle(len(config["teams"]))
+        teams = list(range(len(TEAMS[battle_format[-4:]])))
+        random.Random(config["run_id"]).shuffle(teams)
+        toggle = None if allow_mirror_match else TeamToggle(config["num_teams"])
         env = cls(
             server_configuration=ServerConfiguration(
                 f"ws://localhost:{config['port']}/showdown/websocket",
@@ -48,7 +51,7 @@ class ShowdownEnv(DoublesEnv[npt.NDArray[np.float32]]):
             log_level=25,
             accept_open_team_sheet=True,
             open_timeout=None,
-            team=RandomTeamBuilder(config["teams"], battle_format, toggle),
+            team=RandomTeamBuilder(teams[:config["num_teams"]], battle_format, toggle),
         )
         if not chooses_on_teampreview:
             env.agent1.teampreview = env.async_random_teampreview1
